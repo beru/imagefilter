@@ -5,7 +5,7 @@
 
 namespace blur_1b {
 
-static const int SHIFT = 15;
+static const int SHIFT = 15;	// do not change this value
 
 #define BLUR_EXTRACT_PARAMS \
 	const uint8_t* const pSrc = p.pSrc;\
@@ -20,6 +20,81 @@ static const int SHIFT = 15;
 	const ptrdiff_t workLineOffsetBytes = p.workLineOffsetBytes;\
 	int16_t* pTotalLine = p.pTotalLine;\
 	const uint8_t radius = p.radius;
+
+template <typename PtrT>
+class RingLinePtr {
+private:
+	const size_t size;
+	int idx;
+	PtrT pCur;
+	const ptrdiff_t lineOffsetBytes;
+	PtrT const pFirst;
+	PtrT const pLast;
+public:
+	RingLinePtr(
+		size_t size,
+		size_t curIdx,
+		PtrT pCur,
+		ptrdiff_t lineOffsetBytes
+	)
+		:
+		size(size),
+		idx(curIdx),
+		pCur(pCur),
+		lineOffsetBytes(lineOffsetBytes),
+		pFirst( ((uint8_t*)pCur) + curIdx * -lineOffsetBytes ),
+		pLast( ((uint8_t*)pCur) + (size - 1 - curIdx) * lineOffsetBytes )
+	{
+		assert(curIdx < size);
+	}
+	
+	RingLinePtr& moveNext() {
+		assert(idx < size);
+		++idx;
+		OffsetPtr(pCur, lineOffsetBytes);
+		if (idx == size) {
+			idx = 0;
+			pCur = pFirst;
+		}
+		return *this;
+	}
+
+	RingLinePtr& movePrev() {
+		assert(idx < size);
+		if (idx == 0) {
+			assert(pCur == pFirst);
+			idx = size - 1;
+			pCur = pLast;
+		}else {
+			--idx;
+			OffsetPtr(pCur, -lineOffsetBytes);
+		}
+		return *this;
+	}
+
+	RingLinePtr& move(ptrdiff_t offset) {
+		idx += offset;
+		while (idx < 0) {
+			idx = size - idx;
+		}
+		while (idx > size) {
+			idx -= size;
+		}
+		pCur = pFirst;
+		OffsetPtr(pCur, idx * lineOffsetBytes);
+		return *this;
+	}
+	
+	template <typename PT>
+	operator PT () const {
+		return (PT) pCur;
+	}
+
+	operator PtrT () const {
+		return pCur;
+	}
+
+};
 
 template <typename T>
 class Image {
@@ -1015,11 +1090,7 @@ void test_9(const Parameter& p) {
 	if ((1<<SHIFT) % len) {
 		++invLen;
 	}
-
-	// 横を処理すると同時に縦の処理も行えるので行う。メモリとのやり取りが減るので処理の高速化に繋がる。
-	// 他のスレッド含めた横の処理が完了してからでないと縦の領域の処理を行えない場合があるが、それは望ましくない。
-	// 横の処理を端を超えて余分に行う事によって待つ必要が無くなる。
-	// vertical
+	
 	int kys0 = 1;
 	int kye0 = height;
 	if (bTop) {
@@ -1030,6 +1101,7 @@ void test_9(const Parameter& p) {
 	}
 	
 	const uint8_t* pSrcLine = pSrc;
+	
 	uint8_t* pWorkLine = pWork;
 	uint8_t* pWorkLine2 = pWorkLine;
 	uint8_t* pDestLine = pDest;
@@ -1366,8 +1438,8 @@ void test_10(const Parameter& p) {
 	}
 	
 	const uint8_t* pSrcLine = pSrc;
-	uint8_t* pWorkLine = pWork;
-	uint8_t* pWorkLine2 = pWorkLine;
+	RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
+	RingLinePtr<uint8_t*> pWorkLine2(pWorkLine);
 	uint8_t* pDestLine = pDest;
 	
 	HorizontalProcessor horizontal(width, r, invLen);
@@ -1379,7 +1451,7 @@ void test_10(const Parameter& p) {
 			pTotalLine[x] = pWorkLine[x];
 		}
 		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
+		pWorkLine.moveNext();
 		for (size_t ky=1; ky<=r; ++ky) {
 			horizontal.process(pSrcLine, pWorkLine);
 			const __m128i* pMWork = (const __m128i*)pWorkLine;
@@ -1399,20 +1471,20 @@ void test_10(const Parameter& p) {
 				pTotalLine[x] += pWorkLine[x] * 2;
 			}
 			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			pWorkLine.moveNext();
 		}
 		for (size_t x=0; x<width; ++x) {
 			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
 		}
 		OffsetPtr(pDestLine, destLineOffsetBytes);
-		OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+		pWorkLine2.move(r);
 		
 		for (size_t y=1; y<=r; ++y) {
 			horizontal.process(pSrcLine, pWorkLine);
 			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
 			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine2, -workLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			pWorkLine2.movePrev();
+			pWorkLine.moveNext();
 			OffsetPtr(pDestLine, destLineOffsetBytes);
 		}
 	}else {
@@ -1420,8 +1492,8 @@ void test_10(const Parameter& p) {
 			pTotalLine[x] = 0;
 		}
 		OffsetPtr(pSrcLine, -r * srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-		pWorkLine2 = pWorkLine;
+		pWorkLine.move(-r);
+		pWorkLine2.move(-r);
 		for (int y=-r; y<=r; ++y) {
 			horizontal.process(pSrcLine, pWorkLine);
 			const __m128i* pMWork = (const __m128i*)pWorkLine;
@@ -1440,7 +1512,7 @@ void test_10(const Parameter& p) {
 				pTotalLine[x] += pWorkLine[x];
 			}
 			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			pWorkLine.moveNext();
 		}
 		for (size_t x=0; x<width; ++x) {
 			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
@@ -1452,20 +1524,17 @@ void test_10(const Parameter& p) {
 		horizontal.process(pSrcLine, pWorkLine);
 		vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
 		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pWorkLine2, workLineOffsetBytes);
+		pWorkLine.moveNext();
+		pWorkLine2.moveNext();
 		OffsetPtr(pDestLine, destLineOffsetBytes);
 	}
 	
 	if (bBottom) {
-		pWorkLine2 = pWork;
-		OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-		pWorkLine = pWork;
-		OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
+		pWorkLine.move(-2);
 		for (size_t y=kye0; y<height; ++y) {
 			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
-			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			OffsetPtr(pWorkLine, -workLineOffsetBytes);
+			pWorkLine2.moveNext();
+			pWorkLine.movePrev();
 			OffsetPtr(pDestLine, destLineOffsetBytes);
 		}
 	}
