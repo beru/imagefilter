@@ -1,0 +1,510 @@
+
+縦方向のメモリアクセスの負荷を軽減するには、１列を一気に全て処理するのではなく、行方向へのアクセスでまとめて処理を行う。
+近い行のデータをまとめて処理した方が高速な筈。縦に分割して処理すれば複数スレッドで処理する際のメモリアクセスの競合も出来るだけ避けられるみたいなので。
+	
+	繰り返し行う方法はメモリの読み出し書き出しが増える。
+	なるべくキャッシュに収まる範囲で処理を行った方が良い。
+		
+		Box Blur の処理品質を上げる為に繰り替え処理を行う場合。
+			
+			１回目の処理で２回目の処理出来るラインの処理を終えたら、２回目の処理をそこに走らせる。
+			それが終わったら１回目の処理の次のラインの処理を行い、次に２回目の処理の次のラインの処理を行う。
+			
+			縦の処理はまだ良いけれど、横の処理でこれをやるとルーチンが長くなって複雑になってしまう。
+		
+	ぼかし範囲が大きくなる場合はキャッシュに収まりにくくなるので、ExpBlurを使った方が良さそう。
+
+Box Blur
+	
+	○
+		高速に処理を行うように記述出来る。
+		
+	×
+		品質が低い。
+		繰り返して行えば品質を上げられるが負荷は増える。
+		
+	ぼかし範囲
+		
+		整数版
+		
+			○
+				処理が単純。
+				
+			×
+				微妙な調整が行えない。
+		
+		浮動小数点数数版
+			
+			○
+				微妙な調整が行える。
+				
+			×
+				処理が複雑になる。
+				
+				操作が多くなるので記述が複雑で時間も掛かる。
+				縦方向の処理で、Box Blur で出る値と入る値を処理する際に、まず端のぼけた部分を削ってから、出る値を削って、入る値を足す必要が出てくる。
+	
+	横方向のぼかし処理、半径専用に並列処理を複数記述するのが大変。
+	
+		半径が大きくなった場合にも同じ記述を使えないと駄目。
+	
+	8bit Alpha処理の場合は処理の並列度が高い。専用の処理を用意した方が大分高速に処理出来そう。
+		
+		半径が一定以上大きくなる場合はきつくなる。また処理を用意するのが大変。
+		
+		Alphaだけだと複数の色が混ざった影の描画を行う事が出来ない。カラフルな透明体の影が厳しい。
+
+Exp Blur
+	
+	Exp Blur は前のPixelの値に次のPixelの値が依存するので、横方向の処理を並列化する事が出来ない。
+		
+		RGBA の4要素の処理の並列化は行える。
+		
+	縦方向のぼかし処理、Box Blur を繰り返し行う場合は Exp Blur と負荷が変わらない。
+	
+GaussianFilterみたいな係数値で綺麗にぼかすべきでは？
+
+	Box Filter だと係数値の足し算を毎回行わないで、端の値の引き算足し算で求められるけど、Gaussian Blur では係数値の掛け算＋足し算を毎回行う必要がある。
+
+----------
+
+http://www.blackpawn.com/texts/blur/default.html
+
+http://www.jhlabs.com/ip/blurring.html
+	
+	左右１ピクセルまでに跨る範囲内のボケの場合
+		
+		(A B C D)
+		(E F G H)
+			@B + A + @B
+			@A + B + @C
+			@B + C + @D
+			@C + D + @E
+			
+		(I J K L)
+			@D + E + @F
+			@E + F + @G
+			@F + G + @H
+			@G + H + @I
+		
+		(M N O P)
+			@H + I + @J
+			@I + J + @K
+			@J + K + @L
+			@K + L + @M
+			
+		(Q R S T)
+			@L + M + @N
+			@M + N + @O
+			@N + O + @P
+			@O + P + @Q
+		
+		8bit の Alpha Channel を 128bit分一気に処理
+		
+			(ABCDEFGHIJKLMNOP)
+			(QRSTUVWXYZ123456)
+				@B + A + @B
+				@A + B + @C
+				@B + C + @D
+				@C + D + @E
+				@D + E + @F
+				@E + F + @G
+				@F + G + @H
+				@G + H + @I
+				
+				@H + I + @J
+				@I + J + @K
+				@J + K + @L
+				@K + L + @M
+				@L + M + @N
+				@M + N + @O
+				@N + O + @P
+				@O + P + @Q
+			
+			(789abcdefghijklm)
+				@P + Q + @R
+				@Q + R + @S
+				@R + S + @T
+				@S + T + @U
+				@T + U + @V
+				@U + V + @W
+				@V + W + @X
+				@W + X + @Y
+				
+				@X + Y + @Z
+				@Y + Z + @1
+				@Z + 1 + @2
+				@1 + 2 + @3
+				@2 + 3 + @4
+				@3 + 4 + @5
+				@4 + 5 + @6
+				@5 + 6 + @7
+				
+		外側のピクセルは重複する所があるのでシフトで再利用して求められる。
+		  ABCD
+			 *EFGH*
+				 *IJKL*
+				     *MNOP*
+
+		
+	左右２ピクセルにまで跨る範囲内のボケの場合
+	
+		(A B C D)
+		(E F G H)
+			@C + B+A+B + @C
+			@B + A+B+C + @D
+			
+			@A + B+C+D + @E
+			@B + C+D+E + @F
+			@C + D+E+F + @G
+			@D + E+F+G + @H
+			
+		(I J K L)
+			@E + F+G+H + @I
+			@F + G+H+I + @J
+			@G + H+I+J + @K
+			@H + I+J+K + @L
+			
+		(M N O P)
+			@I + J+K+L + @M
+			@J + K+L+M + @N
+			@K + L+M+N + @O
+			@L + M+N+O + @P
+			
+		(Q R S T)
+			@M + N+O+P + @Q
+			@N + O+P+Q + @R
+			@O + P+Q+R + @S
+			@P + Q+R+S + @T
+		
+		8bit の Alpha Channel を 128bit分一気に処理
+			(ABCDEFGHIJKLMNOP)
+			(QRSTUVWXYZ123456)
+				@C + B+A+B + @C
+				@B + A+B+C + @D
+				@A + B+C+D + @E
+				@B + C+D+E + @F
+				@C + D+E+F + @G
+				@D + E+F+G + @H
+				@E + F+G+H + @I
+				@F + G+H+I + @J
+				
+				@G + H+I+J + @K
+				@H + I+J+K + @L
+				@I + J+K+L + @M
+				@J + K+L+M + @N
+				@K + L+M+N + @O
+				@L + M+N+O + @P
+				@M + N+O+P + @Q
+				@N + O+P+Q + @R
+				
+			(789abcdefghijklm)
+				@O + P+Q+R + @S
+				@P + Q+R+S + @T
+				@Q + R+S+T + @U
+				@R + S+T+U + @V
+				@S + T+U+V + @W
+				@T + U+V+W + @X
+				@U + V+W+X + @Y
+				@V + W+X+Y + @Z
+				
+				@W + X+Y+Z + @1
+				@X + Y+Z+1 + @2
+				@Y + Z+1+2 + @3
+				@Z + 1+2+3 + @4
+				@1 + 2+3+4 + @5
+				@2 + 3+4+5 + @6
+				@3 + 4+5+6 + @7
+				@4 + 5+6+7 + @8
+		
+		中間で隣同士のピクセルを加算しているので、スライドさせて加算する。
+		３行分では再利用出来る範囲が少ない。
+		
+			abcd
+			BCDE
+			CDEF
+			DEFG
+			efgh
+			
+			efgh
+			FGHI
+			GHIJ
+			HIJK
+			ijkl
+			
+			ijkl
+			JKLM
+			KLMN
+			LMNO
+			mnop
+				
+				BCDE
+				CDEF
+				
+				FGHI
+				GHIJ
+				
+				KLMN
+				LMNO
+			
+	左右３ピクセルにまで跨る範囲内のボケの場合
+	
+		(A B C D)
+		(E F G H)
+			@D + C+B+A+B+C + @D
+			
+			@C + B+A+B+C+D + @E
+			
+			@B + A+B+C+D+E + @F
+			@A + B+C+D+E+F + @G
+			@B + C+D+E+F+G + @H
+			
+		(I J K L)
+			@C + D+E+F+G+H + @I
+			@D + E+F+G+H+I + @J
+			@E + F+G+H+I+J + @K
+			@F + G+H+I+J+K + @L
+			
+		(M N O P)
+			@G + H+I+J+K+L + @M
+			@H + I+J+K+L+M + @N
+			@I + J+K+L+M+N + @O
+			@J + K+L+M+N+O + @P
+			
+		(Q R S T)
+			@K + L+M+N+O+P + @Q
+			@L + M+N+O+P+Q + @R
+			@M + N+O+P+Q+R + @S
+			@N + O+P+Q+R+S + @T
+			
+		(U V W X)
+			@O + P+Q+R+S+T + @U
+			@P + Q+R+S+T+U + @V
+			@Q + R+S+T+U+V + @W
+			@R + S+T+U+V+W + @X
+
+			中間で隣同士のピクセルを加算しているので、スライドさせて加算する。
+			
+				cdef
+				DEFG
+				EFGH
+				FGHI
+				GHIJ
+				HIJK
+				ijkl
+				
+				ghij
+				HIJK
+				IJKL
+				JKLM
+				KLMN
+				LMNO
+				mnop
+				
+					DEFG
+					EFGH
+					
+					HIJK
+					IJKL
+					
+					LMNO
+					MNOP
+				
+		8bit の Alpha Channel を 128bit分一気に処理
+			(ABCDEFGHIJKLMNOP)
+			(QRSTUVWXYZ123456)
+				@D + C+B+A+B+C + @D
+				@C + B+A+B+C+D + @E
+				@B + A+B+C+D+E + @F
+				@A + B+C+D+E+F + @G
+				@B + C+D+E+F+G + @H
+				@C + D+E+F+G+H + @I
+				@D + E+F+G+H+I + @J
+				@E + F+G+H+I+J + @K
+				
+				@F + G+H+I+J+K + @L
+				@G + H+I+J+K+L + @M
+				@H + I+J+K+L+M + @N
+				@I + J+K+L+M+N + @O
+				@J + K+L+M+N+O + @P
+				@K + L+M+N+O+P + @Q
+				@L + M+N+O+P+Q + @R
+				@M + N+O+P+Q+R + @S
+				
+			(789abcdefghijklm)
+				@N + O+P+Q+R+S + @T
+				@O + P+Q+R+S+T + @U
+				@P + Q+R+S+T+U + @V
+				@Q + R+S+T+U+V + @W
+				@R + S+T+U+V+W + @X
+				@S + T+U+V+W+X + @Y
+				@T + U+V+W+X+Y + @Z
+				@U + V+W+X+Y+Z + @1
+				
+				@V + W+X+Y+Z+1 + @2
+				@W + X+Y+Z+1+2 + @3
+				@X + Y+Z+1+2+3 + @4
+				@Y + Z+1+2+3+4 + @5
+				@Z + 1+2+3+4+5 + @6
+				@1 + 2+3+4+5+6 + @7
+				@2 + 3+4+5+6+7 + @8
+				@3 + 4+5+6+7+8 + @9
+			
+			元の8bitデータの時点でずらして用意する。
+			
+	左右４ピクセルにまで跨る範囲内のボケ
+		
+		(A B C D)
+		(E F G H)
+			@E + D+C+B+A+B+C+D + @E
+			@D + C+B+A+B+C+D+E + @F
+			@F + B+A+B+C+D+E+F + @G
+			@G + A+B+C+D+E+F+G + @H
+			
+		(I J K L)
+			@A + B+C+D+E+F+G+H + @I
+			@B + C+D+E+F+G+H+I + @J
+			@C + D+E+F+G+H+I+J + @K
+			@D + E+F+G+H+I+J+K + @L
+			
+		(M N O P)
+			@E + F+G+H+I+J+K+L + @M
+			@F + G+H+I+J+K+L+M + @N
+			@G + H+I+J+K+L+M+N + @O
+			@H + I+J+K+L+M+N+O + @P
+			
+		(Q R S T)
+			@I + J+K+L+M+N+O+P + @Q
+			@J + K+L+M+N+O+P+Q + @R
+			@K + L+M+N+O+P+Q+R + @S
+			@L + M+N+O+P+Q+R+S + @T
+			
+		中間で隣同士のピクセルを加算しているので、スライドさせて加算する。
+			
+			abcd
+			BCDE
+			CDEF
+			DEFG
+			EFGH
+			FGHI
+			GHIJ
+			HIJK
+			ijkl
+			
+			efgh
+			FGHI
+			GHIJ
+			HIJK
+			IJKL
+			JKLM
+			KLMN
+			LMNO
+			mnop
+			
+			ijkl
+			JKLM
+			KLMN
+			LMNO
+			MNOP
+			NOPQ
+			OPQR
+			PQRS
+			qrst
+			
+				BCDE
+				CDEF
+				
+				FGHI
+				GHIJ
+				
+				JKLM
+				KLMN
+				
+				NOPQ
+				OPQR
+				
+		
+		出るピクセルと入るピクセルの差分を４並列で求める。
+		差分の要素を加算したのを並列で足せば、次の4要素が一気に求まる。
+			
+				左側が引く値、右側が足す値。
+				二手前の足す値を、引く値に使える。
+			
+			@E + D + C + B + A + B + C + D + @E
+			@D + C + B + A + B + C + D + E + @F
+			@F + B + A + B + C + D + E + F + @G
+			@G + A + B + C + D + E + F + G + @H
+			
+			@A + B + C + D + E + F + G + H + @I
+			@B + C + D + E + F + G + H + I + @J
+			@C + D + E + F + G + H + I + J + @K
+			@D + E + F + G + H + I + J + K + @L
+			
+				(B+C+D+E, I+J+K+L)
+				(C+D+E+F, J+K+L+M)
+				(D+E+F+G, K+L+M+N)
+				(E+F+G+H, L+M+N+O)
+			
+			@E + F + G + H + I + J + K + L + @M
+			@F + G + H + I + J + K + L + M + @N
+			@G + H + I + J + K + L + M + N + @O
+			@H + I + J + K + L + M + N + O + @P
+			
+				(F+G+H+I, M+N+O+P)
+				(G+H+I+J, N+O+P+Q)
+				(H+I+J+K, O+P+Q+R)
+				(I+J+K+L, P+Q+R+S)
+			
+			@I + J + K + L + M + N + O + P + @Q
+			@J + K + L + M + N + O + P + Q + @R
+			@K + L + M + N + O + P + Q + R + @S
+			@L + M + N + O + P + Q + R + S + @T
+			
+				(I+J+K+L, P+Q+R+S)
+				(J+K+L+M, Q+R+S+T)
+				(K+L+M+N, R+S+T+U)
+				(L+M+N+O, S+T+U+V)
+			
+			足す値の用意について
+				HIJK LMNO
+				IJKL MNOP
+				
+				PQRS
+				QRST
+			
+			引く値の用意について。
+				二手前の足す値の素材を加工したものが、引く値の素材になる。
+			
+			ABCD HIJK
+			BCDE IJKL
+			CDEF JKLM
+			DEFG KLMN
+				
+				(A, E) (H, L)
+				(B, F) (I, M)
+				(C, G) (J, N)
+				(D, H) (K, O)
+				
+			EFGH LMNO
+			FGHI MNOP
+			GHIJ NOPQ
+			HIJK OPQR
+				
+				(E, I) (L, P)
+				(F, J) (M, Q)
+				(G, K) (N, R)
+				(H, L) (O, S)
+				
+			IJKL PQRS
+			JKLM QRST
+			KLMN RSTU
+			LMNO STUV
+				
+				(I, M) (P, T)
+				(J, N) (Q, U)
+				(K, O) (R, V)
+				(L, P) (S, W)
+				
+			
+		
+	
