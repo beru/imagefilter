@@ -55,7 +55,7 @@ int main(int argc, char* argv[])
 	GetSystemInfo(&si);
 	
 	const size_t nThreads = si.dwNumberOfProcessors;
-//	const size_t nThreads = 1;
+//	const size_t nThreads = 2;
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
 	const size_t partSize = size / nThreads;
@@ -85,16 +85,16 @@ int main(int argc, char* argv[])
 		//blur_1b::test_1,
 		//blur_1b::test_2,
 		//blur_1b::test_3,
-		//blur_1b::test_4,
-		//blur_1b::test_5_h,
-		//blur_1b::test_5_v,
+		blur_1b::test_4,
+		blur_1b::test_5_h,
+		blur_1b::test_5_v,
 		blur_1b::test_5_h,
 		blur_1b::test_6_v,
 		blur_1b::test_7_h,
 		blur_1b::test_7_v,
 		blur_1b::test_8,
 		blur_1b::test_9,
-//		blur_1b::test_10,
+		blur_1b::test_10,
 	};
 	
 	Timer t;
