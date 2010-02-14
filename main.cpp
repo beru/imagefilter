@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
 	for (size_t i=0; i<size; ++i) {
 		pSrc[i] = palettes[4 * pSrc[i]];
 	}
-
+	
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 	
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
-	pCommon.radius = 2;
+	pCommon.radius = 4;
 	pCommon.iterationCount = 3;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
@@ -88,14 +88,14 @@ int main(int argc, char* argv[])
 	}
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {
-		blur_1b::test_1,
-		blur_1b::test_2,
+		//blur_1b::test_1,
+		//blur_1b::test_2,
 		//blur_1b::test_3,
 		//blur_1b::test_4,
 		//blur_1b::test_5_h,
 		//blur_1b::test_5_v,
-		//blur_1b::test_5_h,
-		//blur_1b::test_6_v,
+		blur_1b::test_5_h,
+		blur_1b::test_6_v,
 		//blur_1b::test_7_h,
 		//blur_1b::test_7_v,
 		//blur_1b::test_8,
