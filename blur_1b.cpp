@@ -766,137 +766,170 @@ void test_7_h(const Parameter& p) {
 	const size_t kxe0 = (size_t) std::max<int>(0, width - r);
 	const size_t kxs0_16end = kxs0 + (16 - (kxs0 % 16));
 	const size_t kxe0_16end = kxe0 - (kxe0 % 16);
-	const uint8_t* pSrcLine = pSrc;
-	uint8_t* pWorkLine = pWork;
-	for (size_t y=0; y<height; ++y) {
-		int total = *pSrcLine;
-		for (size_t kx=1; kx<kxs0; ++kx) {
-			total += pSrcLine[kx] * 2;
+	
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			// TODO: make it compact
+			if (iterationCount & 1) {
+				pFrom = (n & 1) ? pWork : pWork2;
+			}else {
+				pFrom = (n & 1) ? pWork2 : pWork;
+			}
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-		pWorkLine[0] = (total * invLen) >> SHIFT;
-		for (size_t x=1; x<kxs0; ++x) {
-			assert(kxs0 >= x);
-			total += - pSrcLine[kxs0 - x] + pSrcLine[kxs0 + x - 1];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
-		}
-		for (size_t x=kxs0; x<kxs0_16end; ++x) {
-			total += - pSrcLine[x - r - 1] + pSrcLine[x + r];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pWork;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}else {
+			// TODO: make it compact
+			if (iterationCount & 1) {
+				pTo = (n & 1) ? pWork2 : pWork;
+			}else {
+				pTo = (n & 1) ? pWork : pWork2;
+			}
+			toLineOffsetBytes = workLineOffsetBytes;
 		}
 		
-		__m128i* mPSub = (__m128i*) (pSrcLine + kxs0_16end - r - 1);
-		__m128i* mPAdd = (__m128i*) (pSrcLine + kxs0_16end + r);
-		__m128i mNextSub = _mm_loadu_si128(mPSub++); // hoist loading
-		__m128i mNextAdd = _mm_loadu_si128(mPAdd++);
-		__m128i* mPWork = (__m128i*) (pWorkLine + kxs0_16end);
-
-#if 1
-		__m128i mTotal = _mm_set1_epi16(total);
-		for (size_t x=kxs0_16end; x<kxe0_16end; x+=16) {
-			__m128i mSub = mNextSub;
-			__m128i mAdd = mNextAdd;
-			mNextSub = _mm_loadu_si128(mPSub++);
-			mNextAdd = _mm_loadu_si128(mPAdd++);
-			
-			__m128i mSub0 = _mm_unpacklo_epi8(mSub, _mm_setzero_si128());
-			__m128i mSub1 = _mm_unpackhi_epi8(mSub, _mm_setzero_si128());
-			__m128i mAdd0 = _mm_unpacklo_epi8(mAdd, _mm_setzero_si128());
-			__m128i mAdd1 = _mm_unpackhi_epi8(mAdd, _mm_setzero_si128());
-			
-			__m128i mDiff0 = _mm_sub_epi16(mAdd0, mSub0);
-			__m128i mDiff1 = _mm_sub_epi16(mAdd1, mSub1);
-			mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 2));
-			mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 4));
-			mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 8));
-			__m128i jump = _mm_shufflehi_epi16(mDiff0, _MM_SHUFFLE(3,3,3,3));
-			jump = _mm_unpackhi_epi64(jump, jump);
-			
-			mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 2));
-			mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 4));
-			mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 8));
-			mDiff1 = _mm_add_epi16(mDiff1, jump);
-			
-			__m128i left = _mm_add_epi16(mTotal, mDiff0);
-			__m128i right = _mm_add_epi16(mTotal, mDiff1);
-			__m128i left2 = _mm_mulhrs_epi16(left, mInvLeni);
-			__m128i right2 = _mm_mulhrs_epi16(right, mInvLeni);
-			__m128i result = _mm_packus_epi16(left2, right2);
-//			_mm_stream_si128(mPWork++, result);
-			*mPWork++ = result;
-			mTotal = _mm_shufflehi_epi16(right, _MM_SHUFFLE(3,3,3,3));
-			mTotal = _mm_unpackhi_epi64(mTotal, mTotal);
-		}
-		total = _mm_extract_epi16(mTotal, 0);				
-#else
-		// SSE2 path				
-		__m128i mTotal = _mm_set1_epi32(total); //_mm_shuffle_epi32(_mm_cvtsi32_si128(total), 1);
-		for (size_t x=kxs0_16end; x<kxe0_16end; x+=16) {
-			__m128i mSub = mNextSub;
-			__m128i mAdd = mNextAdd;
-			mNextSub = _mm_loadu_si128(mPSub++);
-			mNextAdd = _mm_loadu_si128(mPAdd++);
-			
-			__m128i mSub0 = _mm_unpacklo_epi8(mSub, _mm_setzero_si128());
-			__m128i mSub1 = _mm_unpackhi_epi8(mSub, _mm_setzero_si128());
-			__m128i mAdd0 = _mm_unpacklo_epi8(mAdd, _mm_setzero_si128());
-			__m128i mAdd1 = _mm_unpackhi_epi8(mAdd, _mm_setzero_si128());
-			
-			__m128i mDiff0 = _mm_sub_epi32(_mm_unpacklo_epi16(mAdd0, _mm_setzero_si128()), _mm_unpacklo_epi16(mSub0, _mm_setzero_si128()));
-			__m128i mDiff1 = _mm_sub_epi32(_mm_unpackhi_epi16(mAdd0, _mm_setzero_si128()), _mm_unpackhi_epi16(mSub0, _mm_setzero_si128()));
-			__m128i mDiff2 = _mm_sub_epi32(_mm_unpacklo_epi16(mAdd1, _mm_setzero_si128()), _mm_unpacklo_epi16(mSub1, _mm_setzero_si128()));
-			__m128i mDiff3 = _mm_sub_epi32(_mm_unpackhi_epi16(mAdd1, _mm_setzero_si128()), _mm_unpackhi_epi16(mSub1, _mm_setzero_si128()));
-			
-			mDiff0 = _mm_add_epi32(mDiff0, _mm_slli_si128(mDiff0, 4));
-			mDiff0 = _mm_add_epi32(mDiff0, _mm_slli_si128(mDiff0, 8));
-			mDiff1 = _mm_add_epi32(mDiff1, _mm_slli_si128(mDiff1, 4));
-			mDiff1 = _mm_add_epi32(mDiff1, _mm_slli_si128(mDiff1, 8));
-			mDiff2 = _mm_add_epi32(mDiff2, _mm_slli_si128(mDiff2, 4));
-			mDiff2 = _mm_add_epi32(mDiff2, _mm_slli_si128(mDiff2, 8));
-			mDiff3 = _mm_add_epi32(mDiff3, _mm_slli_si128(mDiff3, 4));
-			mDiff3 = _mm_add_epi32(mDiff3, _mm_slli_si128(mDiff3, 8));
-
-			mTotal = _mm_add_epi32(mTotal, mDiff0);
-			__m128 mfTotal = _mm_cvtepi32_ps(mTotal);
-			__m128i mDest0 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
-			
-			mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
-			mTotal = _mm_add_epi32(mTotal, mDiff1);
-			mfTotal = _mm_cvtepi32_ps(mTotal);
-			__m128i mDest1 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
-
-			mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
-			mTotal = _mm_add_epi32(mTotal, mDiff2);
-			mfTotal = _mm_cvtepi32_ps(mTotal);
-			__m128i mDest2 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
-
-			mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
-			mTotal = _mm_add_epi32(mTotal, mDiff3);
-			mfTotal = _mm_cvtepi32_ps(mTotal);
-			mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
-			__m128i mDest3 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
-
-			*mPWork++ =
-				_mm_packus_epi16(
-					_mm_packs_epi32(mDest0, mDest1),
-					_mm_packs_epi32(mDest2, mDest3)
-				)
-			;
-		}
-		total = _mm_cvtsi128_si32(mTotal);
-#endif
-			
-		for (size_t x=kxe0_16end; x<kxe0; ++x) {
-			total += - pSrcLine[x - r - 1] + pSrcLine[x + r];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
-		}
-		for (size_t x=kxe0,cnt=0; x<width; ++x, ++cnt) {
-			total += - pSrcLine[kxe0 - r + cnt] + pSrcLine[width - 1 - cnt];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
-		}
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-	}
+		const uint8_t* pFromLine = pFrom;
+		uint8_t* pToLine = pTo;
 	
+		for (size_t y=0; y<height; ++y) {
+			int total = *pFromLine;
+			for (size_t kx=1; kx<kxs0; ++kx) {
+				total += pFromLine[kx] * 2;
+			}
+			pToLine[0] = (total * invLen) >> SHIFT;
+			for (size_t x=1; x<kxs0; ++x) {
+				assert(kxs0 >= x);
+				total += - pFromLine[kxs0 - x] + pFromLine[kxs0 + x - 1];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			for (size_t x=kxs0; x<kxs0_16end; ++x) {
+				total += - pFromLine[x - r - 1] + pFromLine[x + r];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			
+			__m128i* mPSub = (__m128i*) (pFromLine + kxs0_16end - r - 1);
+			__m128i* mPAdd = (__m128i*) (pFromLine + kxs0_16end + r);
+			__m128i mNextSub = _mm_loadu_si128(mPSub++); // hoist loading
+			__m128i mNextAdd = _mm_loadu_si128(mPAdd++);
+			__m128i* mPWork = (__m128i*) (pToLine + kxs0_16end);
+
+	#if 1
+			__m128i mTotal = _mm_set1_epi16(total);
+			for (size_t x=kxs0_16end; x<kxe0_16end; x+=16) {
+				__m128i mSub = mNextSub;
+				__m128i mAdd = mNextAdd;
+				mNextSub = _mm_loadu_si128(mPSub++);
+				mNextAdd = _mm_loadu_si128(mPAdd++);
+				
+				__m128i mSub0 = _mm_unpacklo_epi8(mSub, _mm_setzero_si128());
+				__m128i mSub1 = _mm_unpackhi_epi8(mSub, _mm_setzero_si128());
+				__m128i mAdd0 = _mm_unpacklo_epi8(mAdd, _mm_setzero_si128());
+				__m128i mAdd1 = _mm_unpackhi_epi8(mAdd, _mm_setzero_si128());
+				
+				__m128i mDiff0 = _mm_sub_epi16(mAdd0, mSub0);
+				__m128i mDiff1 = _mm_sub_epi16(mAdd1, mSub1);
+				mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 2));
+				mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 4));
+				mDiff0 = _mm_add_epi16(mDiff0, _mm_slli_si128(mDiff0, 8));
+				__m128i jump = _mm_shufflehi_epi16(mDiff0, _MM_SHUFFLE(3,3,3,3));
+				jump = _mm_unpackhi_epi64(jump, jump);
+				
+				mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 2));
+				mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 4));
+				mDiff1 = _mm_add_epi16(mDiff1, _mm_slli_si128(mDiff1, 8));
+				mDiff1 = _mm_add_epi16(mDiff1, jump);
+				
+				__m128i left = _mm_add_epi16(mTotal, mDiff0);
+				__m128i right = _mm_add_epi16(mTotal, mDiff1);
+				__m128i left2 = _mm_mulhrs_epi16(left, mInvLeni);
+				__m128i right2 = _mm_mulhrs_epi16(right, mInvLeni);
+				__m128i result = _mm_packus_epi16(left2, right2);
+	//			_mm_stream_si128(mPWork++, result);
+				*mPWork++ = result;
+				mTotal = _mm_shufflehi_epi16(right, _MM_SHUFFLE(3,3,3,3));
+				mTotal = _mm_unpackhi_epi64(mTotal, mTotal);
+			}
+			total = _mm_extract_epi16(mTotal, 0);				
+	#else
+			// SSE2 path				
+			__m128i mTotal = _mm_set1_epi32(total); //_mm_shuffle_epi32(_mm_cvtsi32_si128(total), 1);
+			for (size_t x=kxs0_16end; x<kxe0_16end; x+=16) {
+				__m128i mSub = mNextSub;
+				__m128i mAdd = mNextAdd;
+				mNextSub = _mm_loadu_si128(mPSub++);
+				mNextAdd = _mm_loadu_si128(mPAdd++);
+				
+				__m128i mSub0 = _mm_unpacklo_epi8(mSub, _mm_setzero_si128());
+				__m128i mSub1 = _mm_unpackhi_epi8(mSub, _mm_setzero_si128());
+				__m128i mAdd0 = _mm_unpacklo_epi8(mAdd, _mm_setzero_si128());
+				__m128i mAdd1 = _mm_unpackhi_epi8(mAdd, _mm_setzero_si128());
+				
+				__m128i mDiff0 = _mm_sub_epi32(_mm_unpacklo_epi16(mAdd0, _mm_setzero_si128()), _mm_unpacklo_epi16(mSub0, _mm_setzero_si128()));
+				__m128i mDiff1 = _mm_sub_epi32(_mm_unpackhi_epi16(mAdd0, _mm_setzero_si128()), _mm_unpackhi_epi16(mSub0, _mm_setzero_si128()));
+				__m128i mDiff2 = _mm_sub_epi32(_mm_unpacklo_epi16(mAdd1, _mm_setzero_si128()), _mm_unpacklo_epi16(mSub1, _mm_setzero_si128()));
+				__m128i mDiff3 = _mm_sub_epi32(_mm_unpackhi_epi16(mAdd1, _mm_setzero_si128()), _mm_unpackhi_epi16(mSub1, _mm_setzero_si128()));
+				
+				mDiff0 = _mm_add_epi32(mDiff0, _mm_slli_si128(mDiff0, 4));
+				mDiff0 = _mm_add_epi32(mDiff0, _mm_slli_si128(mDiff0, 8));
+				mDiff1 = _mm_add_epi32(mDiff1, _mm_slli_si128(mDiff1, 4));
+				mDiff1 = _mm_add_epi32(mDiff1, _mm_slli_si128(mDiff1, 8));
+				mDiff2 = _mm_add_epi32(mDiff2, _mm_slli_si128(mDiff2, 4));
+				mDiff2 = _mm_add_epi32(mDiff2, _mm_slli_si128(mDiff2, 8));
+				mDiff3 = _mm_add_epi32(mDiff3, _mm_slli_si128(mDiff3, 4));
+				mDiff3 = _mm_add_epi32(mDiff3, _mm_slli_si128(mDiff3, 8));
+
+				mTotal = _mm_add_epi32(mTotal, mDiff0);
+				__m128 mfTotal = _mm_cvtepi32_ps(mTotal);
+				__m128i mDest0 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
+				
+				mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
+				mTotal = _mm_add_epi32(mTotal, mDiff1);
+				mfTotal = _mm_cvtepi32_ps(mTotal);
+				__m128i mDest1 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
+
+				mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
+				mTotal = _mm_add_epi32(mTotal, mDiff2);
+				mfTotal = _mm_cvtepi32_ps(mTotal);
+				__m128i mDest2 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
+
+				mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
+				mTotal = _mm_add_epi32(mTotal, mDiff3);
+				mfTotal = _mm_cvtepi32_ps(mTotal);
+				mTotal = _mm_shuffle_epi32(mTotal, _MM_SHUFFLE(3,3,3,3));
+				__m128i mDest3 = _mm_cvttps_epi32(_mm_mul_ps(mfTotal, mInvLen));
+
+				*mPWork++ =
+					_mm_packus_epi16(
+						_mm_packs_epi32(mDest0, mDest1),
+						_mm_packs_epi32(mDest2, mDest3)
+					)
+				;
+			}
+			total = _mm_cvtsi128_si32(mTotal);
+	#endif
+				
+			for (size_t x=kxe0_16end; x<kxe0; ++x) {
+				total += - pFromLine[x - r - 1] + pFromLine[x + r];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			for (size_t x=kxe0,cnt=0; x<width; ++x, ++cnt) {
+				total += - pFromLine[kxe0 - r + cnt] + pFromLine[width - 1 - cnt];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+		}
+	}
 }
 
 void test_7_v(const Parameter& p) {
@@ -975,86 +1008,109 @@ void test_7_v(const Parameter& p) {
 	if (bBottom) {
 		kye0 = std::max<int>(0, height - r);
 	}
-	const uint8_t* pWorkLine = pWork;
-	const uint8_t* pWorkLine2 = pWorkLine;
-	uint8_t* pDestLine = pDest;
 	
-	if (bTop) {
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = pWorkLine[x];
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}else {
+			pFrom = (n & 1) ? pWork2 : pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		for (size_t ky=1; ky<=r; ++ky) {
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = (n & 1) ? pWork : pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		const uint8_t* pFromLine = pFrom;
+		const uint8_t* pFromLine2 = pFromLine;
+		uint8_t* pToLine = pTo;
+
+		if (bTop) {
 			for (size_t x=0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x] * 2;
+				pTotalLine[x] = pFromLine[x];
 			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-		OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
-		
-		for (size_t y=1; y<=r; ++y) {
-			Worker::process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine, mInvLeni, width);
-			OffsetPtr(pWorkLine2, -workLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
-		}
-		
-	}else {
-		__m128i* pMTotal = (__m128i*)pTotalLine;
-		for (size_t x=0; x<width>>4; ++x) {
-			*pMTotal++ = _mm_setzero_si128();
-			*pMTotal++ = _mm_setzero_si128();
-		}
-		for (size_t x=width&0xFFF0; x<width; ++x) {
-			pTotalLine[x] = 0;
-		}
-		OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-		pWorkLine2 = pWorkLine;
-		for (int ky=-r; ky<=r; ++ky) {
-			const __m128i* pMWork = (const __m128i*)pWorkLine;
-			pMTotal = (__m128i*)pTotalLine;
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			for (size_t ky=1; ky<=r; ++ky) {
+				for (size_t x=0; x<width; ++x) {
+					pTotalLine[x] += pFromLine[x] * 2;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			OffsetPtr(pFromLine2, r * fromLineOffsetBytes);
+			
+			for (size_t y=1; y<=r; ++y) {
+				Worker::process((const __m128i*)pFromLine2, (const __m128i*)pFromLine, (__m128i*)pTotalLine, (__m128i*)pToLine, mInvLeni, width);
+				OffsetPtr(pFromLine2, -fromLineOffsetBytes);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+			
+		}else {
+			__m128i* pMTotal = (__m128i*)pTotalLine;
 			for (size_t x=0; x<width>>4; ++x) {
-				__m128i mData = pMWork[x];
-				__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
-				__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
-				
-				__m128i totalLeft = *pMTotal;
-				__m128i totalRight = *(pMTotal+1);
-				*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
-				*pMTotal++ = _mm_add_epi16(totalRight, mRight);
+				*pMTotal++ = _mm_setzero_si128();
+				*pMTotal++ = _mm_setzero_si128();
 			}
 			for (size_t x=width&0xFFF0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x];
+				pTotalLine[x] = 0;
 			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			pFromLine2 = pFromLine;
+			for (int ky=-r; ky<=r; ++ky) {
+				const __m128i* pMWork = (const __m128i*)pFromLine;
+				pMTotal = (__m128i*)pTotalLine;
+				for (size_t x=0; x<width>>4; ++x) {
+					__m128i mData = pMWork[x];
+					__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
+					__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
+					
+					__m128i totalLeft = *pMTotal;
+					__m128i totalRight = *(pMTotal+1);
+					*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
+					*pMTotal++ = _mm_add_epi16(totalRight, mRight);
+				}
+				for (size_t x=width&0xFFF0; x<width; ++x) {
+					pTotalLine[x] += pFromLine[x];
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+		
+		for (int y=kys0; y<kye0; ++y) {
+			Worker::process((const __m128i*)pFromLine2, (const __m128i*)pFromLine, (__m128i*)pTotalLine, (__m128i*)pToLine, mInvLeni, width);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pFromLine2, fromLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	for (int y=kys0; y<kye0; ++y) {
-		Worker::process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine, mInvLeni, width);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pWorkLine2, workLineOffsetBytes);
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	if (bBottom) {
-		pWorkLine2 = pWork;
-		OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-		pWorkLine = pWork;
-		OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
-		for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
-			Worker::process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine, mInvLeni, width);
-			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			OffsetPtr(pWorkLine, -workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+		
+		if (bBottom) {
+			pFromLine2 = pFrom;
+			OffsetPtr(pFromLine2, (kye0 - r) * fromLineOffsetBytes);
+			pFromLine = pFrom;
+			OffsetPtr(pFromLine, (height - 1) * fromLineOffsetBytes);
+			for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
+				Worker::process((const __m128i*)pFromLine2, (const __m128i*)pFromLine, (__m128i*)pTotalLine, (__m128i*)pToLine, mInvLeni, width);
+				OffsetPtr(pFromLine2, fromLineOffsetBytes);
+				OffsetPtr(pFromLine, -fromLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
 		}
 	}
 }
