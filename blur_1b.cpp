@@ -40,9 +40,11 @@ static const int SHIFT = 15;	// do not change this value
 	uint8_t* pDest = p.pDest;\
 	const ptrdiff_t destLineOffsetBytes = p.destLineOffsetBytes;\
 	uint8_t* pWork = p.pWork;\
+	uint8_t* pWork2 = p.pWork2;\
 	const ptrdiff_t workLineOffsetBytes = p.workLineOffsetBytes;\
 	int16_t* pTotalLine = p.pTotalLine;\
-	const uint8_t radius = p.radius;
+	const uint8_t radius = p.radius;\
+	const uint8_t iterationCount = p.iterationCount;
 
 template <typename PtrT>
 class RingLinePtr {
@@ -123,9 +125,9 @@ template <typename T>
 class Image {
 private:
 	T* mPtr;
-	const size_t mWidth;
-	const size_t mHeight;
-	const ptrdiff_t mLineOffsetBytes;
+	size_t mWidth;
+	size_t mHeight;
+	ptrdiff_t mLineOffsetBytes;
 public:
 	Image(T* ptr, size_t width, size_t height, ptrdiff_t lineOffsetBytes)
 		:
@@ -134,6 +136,26 @@ public:
 		mHeight(height),
 		mLineOffsetBytes(lineOffsetBytes)
 	{
+	}
+	
+	Image() {
+	}
+	
+	Image(const Image& i)
+		:
+		mPtr(i.mPtr),
+		mWidth(i.mWidth),
+		mHeight(i.mHeight),
+		mLineOffsetBytes(i.mLineOffsetBytes)
+	{
+	}
+	
+	Image& operator = (const Image& i) {
+		mPtr = i.mPtr;
+		mWidth = i.mWidth;
+		mHeight = i.mHeight;
+		mLineOffsetBytes = i.mLineOffsetBytes;
+		return *this;
 	}
 	
 	T get(size_t x, size_t y) const {
@@ -160,22 +182,32 @@ void test_1(const Parameter& p) {
 
 	BLUR_EXTRACT_PARAMS;
 	
-	Image<const uint8_t> src(pSrc, width, height, srcLineOffsetBytes);
-	Image<uint8_t> target(pDest, width, height, destLineOffsetBytes);
 	const int r = radius;
 	double len = r * 2 + 1;
 	double area = len * len;
 	double invArea = 1.0 / area;
-	for (size_t y=0; y<height; ++y) {
-		for (size_t x=0; x<width; ++x) {
-			unsigned int total = 0;
-			for (int ky=-r; ky<=r; ++ky) {
-				for (int kx=-r; kx<=r; ++kx) {
-					total += src.get(x+kx, y+ky);
+	
+	Image<uint8_t> src((uint8_t*)pSrc, width, height, srcLineOffsetBytes);
+	Image<uint8_t> dest(pDest, width, height, destLineOffsetBytes);
+	Image<uint8_t> work(pWork, width, height, workLineOffsetBytes);
+	Image<uint8_t> work2(pWork2, width, height, workLineOffsetBytes);
+	
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		Image<uint8_t> from = (n == 0) ? src : ((n % 2 == 1) ? work : work2);
+		Image<uint8_t> to = (n == iterationCount - 1) ? dest : ((n % 2 == 0) ? work : work2);
+		for (size_t y=0; y<height; ++y) {
+			for (size_t x=0; x<width; ++x) {
+				unsigned int total = 0;
+				for (int ky=-r; ky<=r; ++ky) {
+					for (int kx=-r; kx<=r; ++kx) {
+						total += from.get(x+kx, y+ky);
+					}
 				}
+				to.set(x, y, (uint8_t)(total * invArea + 0.5));
 			}
-			target.set(x, y, (uint8_t)(total * invArea + 0.5));
 		}
+		
 	}
 }
 

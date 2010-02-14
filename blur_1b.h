@@ -17,11 +17,14 @@ struct Parameter {
 	ptrdiff_t destLineOffsetBytes;
 	
 	uint8_t* pWork;
+	uint8_t* pWork2;
 	ptrdiff_t workLineOffsetBytes;
 	
 	int16_t* pTotalLine;
 	
 	uint8_t radius;
+	
+	uint8_t iterationCount;
 	
 };
 
