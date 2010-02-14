@@ -361,7 +361,7 @@ void test_4(const Parameter& p) {
 	if ((1<<SHIFT) % len) {
 		++invLen;
 	}
-
+	
 	for (size_t n=0; n<iterationCount; ++n) {
 		
 		const uint8_t* pFrom;
@@ -382,7 +382,7 @@ void test_4(const Parameter& p) {
 			pTo = pWork2;
 			toLineOffsetBytes = workLineOffsetBytes;
 		}
-
+		
 		// horizontal
 		{
 			uint8_t* pWorkLine = pWork;
@@ -1184,11 +1184,6 @@ void test_8(const Parameter& p) {
 		kye0 = std::max<int>(0, height - r);
 	}
 	
-	const uint8_t* pSrcLine = pSrc;
-	uint8_t* pWorkLine = pWork;
-	uint8_t* pWorkLine2 = pWorkLine;
-	uint8_t* pDestLine = pDest;
-	
 	HorizontalCollector horizontal(width, r);
 	
 	struct MovOperator {
@@ -1252,90 +1247,118 @@ void test_8(const Parameter& p) {
 		}
 	};
 	
-	SlideOperator slideOp(invLen);
+	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
 	
-	if (bTop) {
-		MovOperator movOp(invLen);
-		Add2Operator add2Op(invLen);
-		movOp.pYTotal = pTotalLine;
-		movOp.pXDest = pWorkLine;
-		horizontal.process(pSrcLine, movOp);
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		for (size_t ky=1; ky<=r; ++ky) {
-			add2Op.pXDest = pWorkLine;
-			add2Op.pYTotal = pTotalLine;
-			horizontal.process(pSrcLine, add2Op);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-		OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+	for (size_t n=0; n<iterationCount; ++n) {
 		
-		for (size_t y=1; y<=r; ++y) {
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		const uint8_t* pFromLine = pFrom;
+		uint8_t* pWorkLine = pWork;
+		uint8_t* pWorkLine2 = pWorkLine;
+		uint8_t* pToLine = pTo;
+		
+		SlideOperator slideOp(invLen);
+		
+		if (bTop) {
+			MovOperator movOp(invLen);
+			Add2Operator add2Op(invLen);
+			movOp.pYTotal = pTotalLine;
+			movOp.pXDest = pWorkLine;
+			horizontal.process(pFromLine, movOp);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			for (size_t ky=1; ky<=r; ++ky) {
+				add2Op.pXDest = pWorkLine;
+				add2Op.pYTotal = pTotalLine;
+				horizontal.process(pFromLine, add2Op);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+			
+			for (size_t y=1; y<=r; ++y) {
+				slideOp.pYTotal = pTotalLine;
+				slideOp.pXDest = pWorkLine;
+				slideOp.pYSub = pWorkLine2;
+				slideOp.pYDest = pToLine;
+				horizontal.process(pFromLine, slideOp);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine2, -workLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}else {
+			AddOperator addOp(invLen);
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = 0;
+			}
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
+			pWorkLine2 = pWorkLine;
+			for (int y=-r; y<=r; ++y) {
+				addOp.pYTotal = pTotalLine;
+				addOp.pXDest = pWorkLine;
+				horizontal.process(pFromLine, addOp);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		for (size_t y=kys0; y<kye0; ++y) {
 			slideOp.pYTotal = pTotalLine;
 			slideOp.pXDest = pWorkLine;
 			slideOp.pYSub = pWorkLine2;
-			slideOp.pYDest = pDestLine;
-			horizontal.process(pSrcLine, slideOp);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine2, -workLineOffsetBytes);
+			slideOp.pYDest = pToLine;
+			horizontal.process(pFromLine, slideOp);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
 			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
-		}
-	}else {
-		AddOperator addOp(invLen);
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = 0;
-		}
-		OffsetPtr(pSrcLine, -r * srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-		pWorkLine2 = pWorkLine;
-		for (int y=-r; y<=r; ++y) {
-			addOp.pYTotal = pTotalLine;
-			addOp.pXDest = pWorkLine;
-			horizontal.process(pSrcLine, addOp);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	for (size_t y=kys0; y<kye0; ++y) {
-		slideOp.pYTotal = pTotalLine;
-		slideOp.pXDest = pWorkLine;
-		slideOp.pYSub = pWorkLine2;
-		slideOp.pYDest = pDestLine;
-		horizontal.process(pSrcLine, slideOp);
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pWorkLine2, workLineOffsetBytes);
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	if (bBottom) {
-		pWorkLine2 = pWork;
-		OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-		pWorkLine = pWork;
-		OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
-		for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
-			for (size_t x=0; x<width; ++x) {
-				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pDestLine[x] = (total * invLen) >> SHIFT;
-				pTotalLine[x] = total;
-			}
 			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			OffsetPtr(pWorkLine, -workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		if (bBottom) {
+			pWorkLine2 = pWork;
+			OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
+			pWorkLine = pWork;
+			OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
+			for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
+				for (size_t x=0; x<width; ++x) {
+					int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
+					pToLine[x] = (total * invLen) >> SHIFT;
+					pTotalLine[x] = total;
+				}
+				OffsetPtr(pWorkLine2, workLineOffsetBytes);
+				OffsetPtr(pWorkLine, -workLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
 		}
 	}
-	
 }
 
 void test_9(const Parameter& p) {
@@ -1359,12 +1382,6 @@ void test_9(const Parameter& p) {
 		kye0 = std::max<int>(0, height - r);
 	}
 	
-	const uint8_t* pSrcLine = pSrc;
-	
-	uint8_t* pWorkLine = pWork;
-	uint8_t* pWorkLine2 = pWorkLine;
-	uint8_t* pDestLine = pDest;
-
 	struct HorizontalCollector {
 		const uint16_t width;
 		const int r;
@@ -1413,90 +1430,117 @@ void test_9(const Parameter& p) {
 		}
 	} horizontal(width, r, invLen);
 	
-	if (bTop) {
-		horizontal.process(pSrcLine, pWorkLine);
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = pWorkLine[x];
-		}
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		for (size_t ky=1; ky<=r; ++ky) {
-			horizontal.process(pSrcLine, pWorkLine);
-			for (size_t x=0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x] * 2;
-			}
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-		OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
+	for (size_t n=0; n<iterationCount; ++n) {
 		
-		for (size_t y=1; y<=r; ++y) {
-			horizontal.process(pSrcLine, pWorkLine);
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		const uint8_t* pFromLine = pFrom;
+		uint8_t* pWorkLine = pWork;
+		uint8_t* pWorkLine2 = pWorkLine;
+		uint8_t* pToLine = pTo;
+			
+		if (bTop) {
+			horizontal.process(pFromLine, pWorkLine);
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = pWorkLine[x];
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			for (size_t ky=1; ky<=r; ++ky) {
+				horizontal.process(pFromLine, pWorkLine);
+				for (size_t x=0; x<width; ++x) {
+					pTotalLine[x] += pWorkLine[x] * 2;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+			
+			for (size_t y=1; y<=r; ++y) {
+				horizontal.process(pFromLine, pWorkLine);
+				for (size_t x=0; x<width; ++x) {
+					int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
+					pToLine[x] = (total * invLen) >> SHIFT;
+					pTotalLine[x] = total;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine2, -workLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}else {
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = 0;
+			}
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
+			pWorkLine2 = pWorkLine;
+			for (int y=-r; y<=r; ++y) {
+				horizontal.process(pFromLine, pWorkLine);
+				for (size_t x=0; x<width; ++x) {
+					pTotalLine[x] += pWorkLine[x];
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		for (size_t y=kys0; y<kye0; ++y) {
+			horizontal.process(pFromLine, pWorkLine);
 			for (size_t x=0; x<width; ++x) {
 				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pDestLine[x] = (total * invLen) >> SHIFT;
+				pToLine[x] = (total * invLen) >> SHIFT;
 				pTotalLine[x] = total;
 			}
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine2, -workLineOffsetBytes);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
 			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
-		}
-	}else {
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = 0;
-		}
-		OffsetPtr(pSrcLine, -r * srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-		pWorkLine2 = pWorkLine;
-		for (int y=-r; y<=r; ++y) {
-			horizontal.process(pSrcLine, pWorkLine);
-			for (size_t x=0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x];
-			}
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	for (size_t y=kys0; y<kye0; ++y) {
-		horizontal.process(pSrcLine, pWorkLine);
-		for (size_t x=0; x<width; ++x) {
-			int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-			pDestLine[x] = (total * invLen) >> SHIFT;
-			pTotalLine[x] = total;
-		}
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pWorkLine2, workLineOffsetBytes);
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	if (bBottom) {
-		pWorkLine2 = pWork;
-		OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-		pWorkLine = pWork;
-		OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
-		for (size_t y=kye0; y<height; ++y) {
-			for (size_t x=0; x<width; ++x) {
-				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pDestLine[x] = (total * invLen) >> SHIFT;
-				pTotalLine[x] = total;
-			}
 			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			OffsetPtr(pWorkLine, -workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		if (bBottom) {
+			pWorkLine2 = pWork;
+			OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
+			pWorkLine = pWork;
+			OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
+			for (size_t y=kye0; y<height; ++y) {
+				for (size_t x=0; x<width; ++x) {
+					int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
+					pToLine[x] = (total * invLen) >> SHIFT;
+					pTotalLine[x] = total;
+				}
+				OffsetPtr(pWorkLine2, workLineOffsetBytes);
+				OffsetPtr(pWorkLine, -workLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
 		}
 	}
-	
 }
 
 struct HorizontalProcessor {
@@ -1657,8 +1701,8 @@ struct VerticalProcessor {
 			
 			__m128i mResult = _mm_packus_epi16(mDest0, mDest1);
 			
-			_mm_stream_si128(pDestLine+i, mResult);	// for single pass
-//				pDestLine[i] = mResult;	// for multi pass
+//			_mm_stream_si128(pDestLine+i, mResult);	// for single pass
+			pDestLine[i] = mResult;	// for multi pass
 		}
 		const size_t remainLoopCount = width & 0xF;
 		uint8_t* pDest = (uint8_t*) (pDestLine + loopCount);
@@ -1696,105 +1740,128 @@ void test_10(const Parameter& p) {
 		kye0 = std::max<int>(0, height - r);
 	}
 	
-	const uint8_t* pSrcLine = pSrc;
-	RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
-	RingLinePtr<uint8_t*> pWorkLine2(pWorkLine);
-	uint8_t* pDestLine = pDest;
-	
-	HorizontalProcessor horizontal(width, r, invLen);
-	VerticalProcessor vertical(width, invLen);
-	
-	if (bTop) {
-		horizontal.process(pSrcLine, pWorkLine);
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = pWorkLine[x];
-		}
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		pWorkLine.moveNext();
-		for (size_t ky=1; ky<=r; ++ky) {
-			horizontal.process(pSrcLine, pWorkLine);
-			const __m128i* pMWork = (const __m128i*)pWorkLine;
-			__m128i* pMTotal = (__m128i*)pTotalLine;
-			for (size_t x=0; x<width>>4; ++x) {
-				__m128i mData = pMWork[x];
-				__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
-				__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
-				mLeft = _mm_add_epi16(mLeft, mLeft);
-				mRight = _mm_add_epi16(mRight, mRight);
-				__m128i totalLeft = *pMTotal;
-				__m128i totalRight = *(pMTotal+1);
-				*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
-				*pMTotal++ = _mm_add_epi16(totalRight, mRight);
-			}
-			for (size_t x=width&0xFFF0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x] * 2;
-			}
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			pWorkLine.moveNext();
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-		pWorkLine2.move(r);
+	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
+	for (size_t n=0; n<iterationCount; ++n) {
 		
-		for (size_t y=1; y<=r; ++y) {
-			horizontal.process(pSrcLine, pWorkLine);
-			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			pWorkLine2.movePrev();
-			pWorkLine.moveNext();
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-	}else {
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = 0;
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
 		}
-		OffsetPtr(pSrcLine, -r * srcLineOffsetBytes);
-		pWorkLine.move(-r);
-		pWorkLine2.move(-r);
-		for (int y=-r; y<=r; ++y) {
-			horizontal.process(pSrcLine, pWorkLine);
-			const __m128i* pMWork = (const __m128i*)pWorkLine;
-			__m128i* pMTotal = (__m128i*)pTotalLine;
-			for (size_t x=0; x<width>>4; ++x) {
-				__m128i mData = pMWork[x];
-				__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
-				__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
-				
-				__m128i totalLeft = *pMTotal;
-				__m128i totalRight = *(pMTotal+1);
-				*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
-				*pMTotal++ = _mm_add_epi16(totalRight, mRight);
+		
+		const uint8_t* pFromLine = pFrom;
+		RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
+		RingLinePtr<uint8_t*> pWorkLine2(pWorkLine);
+		uint8_t* pToLine = pTo;
+		
+		HorizontalProcessor horizontal(width, r, invLen);
+		VerticalProcessor vertical(width, invLen);
+		
+		if (bTop) {
+			horizontal.process(pFromLine, pWorkLine);
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = pWorkLine[x];
 			}
-			for (size_t x=width&0xFFF0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x];
-			}
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
 			pWorkLine.moveNext();
+			for (size_t ky=1; ky<=r; ++ky) {
+				horizontal.process(pFromLine, pWorkLine);
+				const __m128i* pMWork = (const __m128i*)pWorkLine;
+				__m128i* pMTotal = (__m128i*)pTotalLine;
+				for (size_t x=0; x<width>>4; ++x) {
+					__m128i mData = pMWork[x];
+					__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
+					__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
+					mLeft = _mm_add_epi16(mLeft, mLeft);
+					mRight = _mm_add_epi16(mRight, mRight);
+					__m128i totalLeft = *pMTotal;
+					__m128i totalRight = *(pMTotal+1);
+					*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
+					*pMTotal++ = _mm_add_epi16(totalRight, mRight);
+				}
+				for (size_t x=width&0xFFF0; x<width; ++x) {
+					pTotalLine[x] += pWorkLine[x] * 2;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine.moveNext();
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			pWorkLine2.move(r);
+			
+			for (size_t y=1; y<=r; ++y) {
+				horizontal.process(pFromLine, pWorkLine);
+				vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pToLine);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine2.movePrev();
+				pWorkLine.moveNext();
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}else {
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = 0;
+			}
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			pWorkLine.move(-r);
+			pWorkLine2.move(-r);
+			for (int y=-r; y<=r; ++y) {
+				horizontal.process(pFromLine, pWorkLine);
+				const __m128i* pMWork = (const __m128i*)pWorkLine;
+				__m128i* pMTotal = (__m128i*)pTotalLine;
+				for (size_t x=0; x<width>>4; ++x) {
+					__m128i mData = pMWork[x];
+					__m128i mLeft = _mm_unpacklo_epi8(mData, _mm_setzero_si128());
+					__m128i mRight = _mm_unpackhi_epi8(mData, _mm_setzero_si128());
+					
+					__m128i totalLeft = *pMTotal;
+					__m128i totalRight = *(pMTotal+1);
+					*pMTotal++ = _mm_add_epi16(totalLeft, mLeft);
+					*pMTotal++ = _mm_add_epi16(totalRight, mRight);
+				}
+				for (size_t x=width&0xFFF0; x<width; ++x) {
+					pTotalLine[x] += pWorkLine[x];
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine.moveNext();
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	for (size_t y=kys0; y<kye0; ++y) {
-		horizontal.process(pSrcLine, pWorkLine);
-		vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
-		pWorkLine.moveNext();
-		pWorkLine2.moveNext();
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	if (bBottom) {
-		pWorkLine.move(-2);
-		for (size_t y=kye0; y<height; ++y) {
-			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pDestLine);
+		
+		for (size_t y=kys0; y<kye0; ++y) {
+			horizontal.process(pFromLine, pWorkLine);
+			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pToLine);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			pWorkLine.moveNext();
 			pWorkLine2.moveNext();
-			pWorkLine.movePrev();
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		if (bBottom) {
+			pWorkLine.move(-2);
+			for (size_t y=kye0; y<height; ++y) {
+				vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pToLine);
+				pWorkLine2.moveNext();
+				pWorkLine.movePrev();
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
 		}
 	}
 	_mm_mfence();
