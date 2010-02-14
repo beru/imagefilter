@@ -220,34 +220,54 @@ void test_2(const Parameter& p) {
 	double area = len * len;
 	double invArea = 1.0 / area;
 	
-	uint8_t* pDestLine = pDest;
+	for (size_t n=0; n<iterationCount; ++n) {
 	
-	for (size_t y=0; y<height; ++y) {
-		for (size_t x=0; x<width; ++x) {
-			unsigned int total = 0;
-			int kys = y - r;
-			int kye = y + r;
-			if (bTop) {
-				kys = std::max<int>(0, kys);
-			}
-			if (bBottom) {
-				kye = std::min<int>(height, kye);
-			}
-			const int kxs = std::max<int>(0, x-r);
-			const int kxe = std::min<int>(width, x+r);
-			const uint8_t* pSrcLine = pSrc;
-			OffsetPtr(pSrcLine, kys*srcLineOffsetBytes);
-			for (int ky=kys; ky<=kye; ++ky) {
-				for (int kx=kxs; kx<=kxe; ++kx) {
-					total += pSrcLine[kx];
-				}
-				OffsetPtr(pSrcLine, srcLineOffsetBytes);
-			}
-			pDestLine[x] = (uint8_t)(total * invArea + 0.5);
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = ((n % 2 == 1) ? pWork : pWork2);
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = ((n % 2 == 0) ? pWork : pWork2);
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		for (size_t y=0; y<height; ++y) {
+			for (size_t x=0; x<width; ++x) {
+				unsigned int total = 0;
+				int kys = y - r;
+				int kye = y + r;
+				if (bTop) {
+					kys = std::max<int>(0, kys);
+				}
+				if (bBottom) {
+					kye = std::min<int>(height, kye);
+				}
+				const int kxs = std::max<int>(0, x-r);
+				const int kxe = std::min<int>(width, x+r);
+				const uint8_t* pFromLine = pFrom;
+				OffsetPtr(pFromLine, kys*fromLineOffsetBytes);
+				for (int ky=kys; ky<=kye; ++ky) {
+					for (int kx=kxs; kx<=kxe; ++kx) {
+						total += pFromLine[kx];
+					}
+					OffsetPtr(pFromLine, fromLineOffsetBytes);
+				}
+				pTo[x] = (uint8_t)(total * invArea + 0.5);
+			}
+			OffsetPtr(pTo, toLineOffsetBytes);
+		}
 	
+	}
 }
 
 void test_3(const Parameter& p) {
