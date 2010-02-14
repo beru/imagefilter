@@ -280,51 +280,74 @@ void test_3(const Parameter& p) {
 	double invLen = 1.0 / len;
 	double invArea = 1.0 / area;
 
-	// horizontal
-	{
-		uint8_t* pWorkLine = pWork;
-		const uint8_t* pSrcLine = pSrc;
-		for (size_t y=0; y<height; ++y) {
-			for (size_t x=0; x<width; ++x) {
-				unsigned int total = 0;
-				const int kxs = std::max<int>(0, x-r);
-				const int kxe = std::min<int>(width, x+r);
-				for (int kx=kxs; kx<=kxe; ++kx) {
-					total += pSrcLine[kx];
-				}
-				pWorkLine[x] = (uint8_t)(total * invLen + 0.5);
-			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-	}
-	// vertical
-	{
-		const uint8_t* pWorkLine = pWork;
-		uint8_t* pDestLine = pDest;
-		for (size_t x=0; x<width; ++x) {
-			pDestLine = pDest;
-			pDestLine += x;
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		// horizontal
+		{
+			uint8_t* pWorkLine = pWork;
+			const uint8_t* pFromLine = pFrom;
 			for (size_t y=0; y<height; ++y) {
-				unsigned int total = 0;
-				int kys = y - r;
-				int kye = y + r;
-				if (bTop) {
-					kys = std::max<int>(0, kys);
+				for (size_t x=0; x<width; ++x) {
+					unsigned int total = 0;
+					const int kxs = std::max<int>(0, x-r);
+					const int kxe = std::min<int>(width, x+r);
+					for (int kx=kxs; kx<=kxe; ++kx) {
+						total += pFromLine[kx];
+					}
+					pWorkLine[x] = (uint8_t)(total * invLen + 0.5);
 				}
-				if (bBottom) {
-					kye = std::min<int>(height, kye);
-				}
-				pWorkLine = pWork;
-				OffsetPtr(pWorkLine, kys*workLineOffsetBytes);
-				for (int ky=kys; ky<=kye; ++ky) {
-					total += pWorkLine[x];
-					OffsetPtr(pWorkLine, workLineOffsetBytes);
-				}
-				*pDestLine = (uint8_t)(total * invLen + 0.5);
-				OffsetPtr(pDestLine, destLineOffsetBytes);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
 			}
 		}
+		// vertical
+		{
+			const uint8_t* pWorkLine = pWork;
+			uint8_t* pToLine = pTo;
+			for (size_t x=0; x<width; ++x) {
+				pToLine = pTo;
+				pToLine += x;
+				for (size_t y=0; y<height; ++y) {
+					unsigned int total = 0;
+					int kys = y - r;
+					int kye = y + r;
+					if (bTop) {
+						kys = std::max<int>(0, kys);
+					}
+					if (bBottom) {
+						kye = std::min<int>(height, kye);
+					}
+					pWorkLine = pWork;
+					OffsetPtr(pWorkLine, kys*workLineOffsetBytes);
+					for (int ky=kys; ky<=kye; ++ky) {
+						total += pWorkLine[x];
+						OffsetPtr(pWorkLine, workLineOffsetBytes);
+					}
+					*pToLine = (uint8_t)(total * invLen + 0.5);
+					OffsetPtr(pToLine, toLineOffsetBytes);
+				}
+			}
+		}
+		
 	}
 }
 
@@ -339,55 +362,77 @@ void test_4(const Parameter& p) {
 		++invLen;
 	}
 
-	// horizontal
-	{
-		uint8_t* pWorkLine = pWork;
-		const uint8_t* pSrcLine = pSrc;
-		for (size_t y=0; y<height; ++y) {
-			for (size_t x=0; x<width; ++x) {
-				unsigned int total = 0;
-				const int kxs = std::max<int>(0, x-r);
-				const int kxe = std::min<int>(width, x+r);
-				for (int kx=kxs; kx<=kxe; ++kx) {
-					total += pSrcLine[kx];
-				}
-				pWorkLine[x] = (total * invLen) >> SHIFT;
-			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pSrcLine, srcLineOffsetBytes);
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFrom = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-	}
-	// vertical
-	{
-		const uint8_t* pWorkLine = pWork;
-		uint8_t* pDestLine = pDest;
-		for (size_t x=0; x<width; ++x) {
-			pDestLine = pDest + x;
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+
+		// horizontal
+		{
+			uint8_t* pWorkLine = pWork;
+			const uint8_t* pFromLine = pFrom;
 			for (size_t y=0; y<height; ++y) {
-				unsigned int total = 0;
-				int kys = y - r;
-				int kye = y + r;
-				if (bTop) {
-					kys = std::max<int>(0, kys);
+				for (size_t x=0; x<width; ++x) {
+					unsigned int total = 0;
+					const int kxs = std::max<int>(0, x-r);
+					const int kxe = std::min<int>(width, x+r);
+					for (int kx=kxs; kx<=kxe; ++kx) {
+						total += pFromLine[kx];
+					}
+					pWorkLine[x] = (total * invLen) >> SHIFT;
 				}
-				if (bBottom) {
-					kye = std::min<int>(height, kye);
+				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+			}
+		}
+		// vertical
+		{
+			const uint8_t* pWorkLine = pWork;
+			uint8_t* pToLine = pTo;
+			for (size_t x=0; x<width; ++x) {
+				pToLine = pTo + x;
+				for (size_t y=0; y<height; ++y) {
+					unsigned int total = 0;
+					int kys = y - r;
+					int kye = y + r;
+					if (bTop) {
+						kys = std::max<int>(0, kys);
+					}
+					if (bBottom) {
+						kye = std::min<int>(height, kye);
+					}
+					pWorkLine = pWork;
+					OffsetPtr(pWorkLine, kys*workLineOffsetBytes);
+					for (int ky=kys; ky<=kye; ++ky) {
+						total += pWorkLine[x];
+						OffsetPtr(pWorkLine, workLineOffsetBytes);
+					}
+					*pToLine = (total * invLen) >> SHIFT;
+					OffsetPtr(pToLine, toLineOffsetBytes);
 				}
-				pWorkLine = pWork;
-				OffsetPtr(pWorkLine, kys*workLineOffsetBytes);
-				for (int ky=kys; ky<=kye; ++ky) {
-					total += pWorkLine[x];
-					OffsetPtr(pWorkLine, workLineOffsetBytes);
-				}
-				*pDestLine = (total * invLen) >> SHIFT;
-				OffsetPtr(pDestLine, destLineOffsetBytes);
 			}
 		}
 	}
 }
 
 void test_5_h(const Parameter& p) {
-
+	
 	BLUR_EXTRACT_PARAMS;
 	
 	int r = std::min<int>(height, std::min<int>(width, radius));
@@ -400,32 +445,67 @@ void test_5_h(const Parameter& p) {
 	// horizontal
 	const size_t kxs0 = std::min<size_t>(width, 1 + r);
 	const size_t kxe0 = (size_t) std::max<int>(0, width - r);
-	const uint8_t* pSrcLine = pSrc;
-	uint8_t* pWorkLine = pWork;
-	for (size_t y=0; y<height; ++y) {
-		int total = *pSrcLine;
-		for (size_t kx=1; kx<kxs0; ++kx) {
-			total += pSrcLine[kx] * 2;
+	
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			// TODO: make it compact
+			if (iterationCount & 1) {
+				pFrom = (n & 1) ? pWork : pWork2;
+			}else {
+				pFrom = (n & 1) ? pWork2 : pWork;
+			}
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-		pWorkLine[0] = (total * invLen) >> SHIFT;
-		for (size_t x=1; x<kxs0; ++x) {
-			assert(kxs0 >= x);
-			total -= pSrcLine[kxs0 - x];
-			total += pSrcLine[kxs0 + x - 1];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pWork;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}else {
+			// TODO: make it compact
+			if (iterationCount & 1) {
+				pTo = (n & 1) ? pWork2 : pWork;
+			}else {
+				pTo = (n & 1) ? pWork : pWork2;
+			}
+			toLineOffsetBytes = workLineOffsetBytes;
 		}
-		for (size_t x=kxs0; x<kxe0; ++x) {
-			total -= pSrcLine[x - r - 1];
-			total += pSrcLine[x + r];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
+		
+		const uint8_t* pFromLine = pFrom;
+		uint8_t* pToLine = pTo;
+		
+		for (size_t y=0; y<height; ++y) {
+			int total = *pFromLine;
+			for (size_t kx=1; kx<kxs0; ++kx) {
+				total += pFromLine[kx] * 2;
+			}
+			pToLine[0] = (total * invLen) >> SHIFT;
+			for (size_t x=1; x<kxs0; ++x) {
+				assert(kxs0 >= x);
+				total -= pFromLine[kxs0 - x];
+				total += pFromLine[kxs0 + x - 1];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			for (size_t x=kxs0; x<kxe0; ++x) {
+				total -= pFromLine[x - r - 1];
+				total += pFromLine[x + r];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			for (size_t x=kxe0,cnt=0; x<width; ++x, ++cnt) {
+				total -= pFromLine[kxe0 - r + cnt];
+				total += pFromLine[width - 1 - cnt];
+				pToLine[x] = (total * invLen) >> SHIFT;
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
-		for (size_t x=kxe0,cnt=0; x<width; ++x, ++cnt) {
-			total -= pSrcLine[kxe0 - r + cnt];
-			total += pSrcLine[width - 1 - cnt];
-			pWorkLine[x] = (total * invLen) >> SHIFT;
-		}
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pSrcLine, srcLineOffsetBytes);
+		
 	}
 }
 
@@ -449,76 +529,102 @@ void test_5_v(const Parameter& p) {
 	if (bBottom) {
 		kye0 = std::max<int>(0, height - r);
 	}
-	const uint8_t* pWorkLine = pWork;
-	const uint8_t* pWorkLine2 = pWorkLine;
-	uint8_t* pDestLine = pDest;
-	for (size_t x=0; x<width; ++x) {
+	
+	for (size_t n=0; n<iterationCount; ++n) {
 		
-		pDestLine = pDest + x;
-		const uint8_t* pWorkBase = pWork + x;
-		
-		int total = 0;
-		
-		if (bTop) {
-			pWorkLine = pWorkBase;
-			pWorkLine2 = pWorkLine;
-			OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
-			
-			total = *pWorkLine;
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			for (size_t ky=1; ky<=r; ++ky) {
-				total += *pWorkLine * 2;
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
-			}
-			
-			*pDestLine = (total * invLen) >> SHIFT;
-			OffsetPtr(pDestLine, destLineOffsetBytes);
-			
-			for (size_t y=1; y<=r; ++y) {
-				total -= *pWorkLine2;
-				total += *pWorkLine;
-				OffsetPtr(pWorkLine2, -workLineOffsetBytes);
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
-				*pDestLine = (total * invLen) >> SHIFT;
-				OffsetPtr(pDestLine, destLineOffsetBytes);
-			}
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}else {
-			pWorkLine = pWorkBase;
-			OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-			pWorkLine2 = pWorkLine;
-			for (int ky=-r; ky<=r; ++ky) {
-				total += *pWorkLine;
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
-			}
-			*pDestLine = (total * invLen) >> SHIFT;
-			OffsetPtr(pDestLine, destLineOffsetBytes);
-
+			pFrom = (n & 1) ? pWork2 : pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
 		}
-
-		for (size_t y=kys0; y<kye0; ++y) {
-			total -= *pWorkLine2;
-			total += *pWorkLine;
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			*pDestLine = (total * invLen) >> SHIFT;
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = (n & 1) ? pWork : pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
 		}
 		
-		if (bBottom) {
-			pWorkLine2 = pWorkBase;
-			OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-			pWorkLine = pWorkBase;
-			OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
-			for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
-				total -= *pWorkLine2;
-				total += *pWorkLine;
-				OffsetPtr(pWorkLine2, workLineOffsetBytes);
-				OffsetPtr(pWorkLine, -workLineOffsetBytes);
-				*pDestLine = (total * invLen) >> SHIFT;
-				OffsetPtr(pDestLine, destLineOffsetBytes);
+		const uint8_t* pFromLine = pFrom;
+		const uint8_t* pFromLine2 = pFromLine;
+		uint8_t* pToLine = pTo;
+		
+		for (size_t x=0; x<width; ++x) {
+			
+			pToLine = pTo + x;
+			const uint8_t* pFromBase = pFrom + x;
+			
+			int total = 0;
+			
+			if (bTop) {
+				pFromLine = pFromBase;
+				pFromLine2 = pFromLine;
+				OffsetPtr(pFromLine2, r * fromLineOffsetBytes);
+				
+				total = *pFromLine;
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				for (size_t ky=1; ky<=r; ++ky) {
+					total += *pFromLine * 2;
+					OffsetPtr(pFromLine, fromLineOffsetBytes);
+				}
+				
+				*pToLine = (total * invLen) >> SHIFT;
+				OffsetPtr(pToLine, toLineOffsetBytes);
+				
+				for (size_t y=1; y<=r; ++y) {
+					total -= *pFromLine2;
+					total += *pFromLine;
+					OffsetPtr(pFromLine2, -fromLineOffsetBytes);
+					OffsetPtr(pFromLine, fromLineOffsetBytes);
+					*pToLine = (total * invLen) >> SHIFT;
+					OffsetPtr(pToLine, toLineOffsetBytes);
+				}
+			}else {
+				pFromLine = pFromBase;
+				OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+				pFromLine2 = pFromLine;
+				for (int ky=-r; ky<=r; ++ky) {
+					total += *pFromLine;
+					OffsetPtr(pFromLine, fromLineOffsetBytes);
+				}
+				*pToLine = (total * invLen) >> SHIFT;
+				OffsetPtr(pToLine, toLineOffsetBytes);
+
+			}
+
+			for (size_t y=kys0; y<kye0; ++y) {
+				total -= *pFromLine2;
+				total += *pFromLine;
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pFromLine2, fromLineOffsetBytes);
+				*pToLine = (total * invLen) >> SHIFT;
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+			
+			if (bBottom) {
+				pFromLine2 = pFromBase;
+				OffsetPtr(pFromLine2, (kye0 - r) * fromLineOffsetBytes);
+				pFromLine = pFromBase;
+				OffsetPtr(pFromLine, (height - 1) * fromLineOffsetBytes);
+				for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
+					total -= *pFromLine2;
+					total += *pFromLine;
+					OffsetPtr(pFromLine2, fromLineOffsetBytes);
+					OffsetPtr(pFromLine, -fromLineOffsetBytes);
+					*pToLine = (total * invLen) >> SHIFT;
+					OffsetPtr(pToLine, toLineOffsetBytes);
+				}
 			}
 		}
+		
 	}
+	
 }
 
 void test_6_v(const Parameter& p) {
@@ -542,80 +648,102 @@ void test_6_v(const Parameter& p) {
 		kye0 = std::max<int>(0, height - r);
 	}
 	
-	const uint8_t* pWorkLine = pWork;
-	const uint8_t* pWorkLine2 = pWorkLine;
-	uint8_t* pDestLine = pDest;
-			
-	if (bTop) {
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = pWorkLine[x];
-		}
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		for (size_t ky=1; ky<=r; ++ky) {
-			for (size_t x=0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x] * 2;
-			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-		OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+	for (size_t n=0; n<iterationCount; ++n) {
 		
-		for (size_t y=1; y<=r; ++y) {
+		const uint8_t* pFrom;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFrom = pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}else {
+			pFrom = (n & 1) ? pWork2 : pWork;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}
+		uint8_t* pTo;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pTo = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pTo = (n & 1) ? pWork : pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		const uint8_t* pFromLine = pFrom;
+		const uint8_t* pFromLine2 = pFromLine;
+		uint8_t* pToLine = pTo;
+		
+		if (bTop) {
 			for (size_t x=0; x<width; ++x) {
-				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pDestLine[x] = (total * invLen) >> SHIFT;
+				pTotalLine[x] = pFromLine[x];
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			for (size_t ky=1; ky<=r; ++ky) {
+				for (size_t x=0; x<width; ++x) {
+					pTotalLine[x] += pFromLine[x] * 2;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			OffsetPtr(pFromLine2, r * fromLineOffsetBytes);
+			
+			for (size_t y=1; y<=r; ++y) {
+				for (size_t x=0; x<width; ++x) {
+					int total = pTotalLine[x] - pFromLine2[x] + pFromLine[x];
+					pToLine[x] = (total * invLen) >> SHIFT;
+					pTotalLine[x] = total;
+				}
+				OffsetPtr(pFromLine2, -fromLineOffsetBytes);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}else {
+			for (size_t x=0; x<width; ++x) {
+				pTotalLine[x] = 0;
+			}
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			pFromLine2 = pFromLine;
+			for (int y=-r; y<=r; ++y) {
+				for (size_t x=0; x<width; ++x) {
+					pTotalLine[x] += pFromLine[x];
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		for (size_t y=kys0; y<kye0; ++y) {
+			for (size_t x=0; x<width; ++x) {
+				int total = pTotalLine[x] - pFromLine2[x] + pFromLine[x];
+				pToLine[x] = (total * invLen) >> SHIFT;
 				pTotalLine[x] = total;
 			}
-			OffsetPtr(pWorkLine2, -workLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pFromLine2, fromLineOffsetBytes);
+			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
-	}else {
-		for (size_t x=0; x<width; ++x) {
-			pTotalLine[x] = 0;
-		}
-		OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-		pWorkLine2 = pWorkLine;
-		for (int y=-r; y<=r; ++y) {
-			for (size_t x=0; x<width; ++x) {
-				pTotalLine[x] += pWorkLine[x];
+		
+		if (bBottom) {
+			pFromLine2 = pWork;
+			OffsetPtr(pFromLine2, (kye0 - r) * fromLineOffsetBytes);
+			pFromLine = pWork;
+			OffsetPtr(pFromLine, (height - 1) * fromLineOffsetBytes);
+			for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
+				for (size_t x=0; x<width; ++x) {
+					int total = pTotalLine[x] - pFromLine2[x] + pFromLine[x];
+					pToLine[x] = (total * invLen) >> SHIFT;
+					pTotalLine[x] = total;
+				}
+				OffsetPtr(pFromLine2, fromLineOffsetBytes);
+				OffsetPtr(pFromLine, -fromLineOffsetBytes);
+				OffsetPtr(pToLine, toLineOffsetBytes);
 			}
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-		}
-		for (size_t x=0; x<width; ++x) {
-			pDestLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
-		}
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	for (size_t y=kys0; y<kye0; ++y) {
-		for (size_t x=0; x<width; ++x) {
-			int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-			pDestLine[x] = (total * invLen) >> SHIFT;
-			pTotalLine[x] = total;
-		}
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pWorkLine2, workLineOffsetBytes);
-		OffsetPtr(pDestLine, destLineOffsetBytes);
-	}
-	
-	if (bBottom) {
-		pWorkLine2 = pWork;
-		OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-		pWorkLine = pWork;
-		OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
-		for (size_t y=kye0,cnt=0; y<height; ++y, ++cnt) {
-			for (size_t x=0; x<width; ++x) {
-				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pDestLine[x] = (total * invLen) >> SHIFT;
-				pTotalLine[x] = total;
-			}
-			OffsetPtr(pWorkLine2, workLineOffsetBytes);
-			OffsetPtr(pWorkLine, -workLineOffsetBytes);
-			OffsetPtr(pDestLine, destLineOffsetBytes);
 		}
 	}
 }

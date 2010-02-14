@@ -1,0 +1,65 @@
+
+-------------
+
+1pass
+	S	D
+	
+2pass
+	S	1	D
+	
+3pass
+	S	1	2	D
+	
+4pass
+	S	1	2	1	D
+	
+5pass
+	S	1	2	1	2	D
+	
+-------------
+
+		H	V	H	V	H	V
+1pass
+	S	1	D
+	
+2pass
+	S	1	2	1	D
+
+3pass
+	S	1	2	1	2	1	D
+	
+------------
+
+		H	V	V	V
+1pass
+	S	1	D
+	
+2pass
+	S	1	2	D
+
+3pass
+	S	1	2	1	D
+	
+------------
+
+1pass
+	S	1
+	1	D
+	
+2pass
+	S	2	1
+	1	2	D
+	
+3pass
+	S	1	2	1
+	1	2	1	D
+	
+4pass
+	S	2	1	2	1
+	1	2	1	2	D
+	
+5pass
+	S	1	2	1	2	1
+	1	2	1	2	1	D
+
+
