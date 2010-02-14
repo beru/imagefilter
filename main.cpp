@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
 	pCommon.radius = 2;
-	pCommon.iterationCount = 5;
+	pCommon.iterationCount = 3;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
 		blur_1b::Parameter& p = params[i];
@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {
 		blur_1b::test_1,
-		//blur_1b::test_2,
+		blur_1b::test_2,
 		//blur_1b::test_3,
 		//blur_1b::test_4,
 		//blur_1b::test_5_h,
