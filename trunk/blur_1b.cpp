@@ -100,7 +100,7 @@ public:
 	RingLinePtr& move(ptrdiff_t offset) {
 		idx += offset;
 		while (idx < 0) {
-			idx = size - idx;
+			idx += size;
 		}
 		while (idx > size) {
 			idx -= size;
@@ -1373,15 +1373,6 @@ void test_9(const Parameter& p) {
 		++invLen;
 	}
 	
-	int kys0 = 1;
-	int kye0 = height;
-	if (bTop) {
-		kys0 = std::min<int>(height, 1 + r);
-	}
-	if (bBottom) {
-		kye0 = std::max<int>(0, height - r);
-	}
-	
 	struct HorizontalCollector {
 		const uint16_t width;
 		const int r;
@@ -1455,7 +1446,6 @@ void test_9(const Parameter& p) {
 		}
 	} vertical(width, invLen);
 	
-	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
 	for (size_t n=0; n<iterationCount; ++n) {
 		
 		const uint8_t* pFrom;
@@ -1481,7 +1471,7 @@ void test_9(const Parameter& p) {
 		RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
 		RingLinePtr<uint8_t*> pWorkLine2(pWorkLine);
 		uint8_t* pToLine = pTo;
-			
+		
 		if (bTop) {
 			horizontal.process(pFromLine, pWorkLine);
 			for (size_t x=0; x<width; ++x) {
@@ -1515,9 +1505,11 @@ void test_9(const Parameter& p) {
 			for (size_t x=0; x<width; ++x) {
 				pTotalLine[x] = 0;
 			}
-			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
-			pWorkLine.move(-r);
-			pWorkLine2.move(-r);
+			int offset = (iterationCount - n) * -r;
+			OffsetPtr(pFromLine, offset * fromLineOffsetBytes);
+			pWorkLine.move(offset);
+			pWorkLine2.move(offset);
+			OffsetPtr(pToLine, (iterationCount - n - 1) * -r * toLineOffsetBytes);
 			for (int y=-r; y<=r; ++y) {
 				horizontal.process(pFromLine, pWorkLine);
 				for (size_t x=0; x<width; ++x) {
@@ -1532,7 +1524,19 @@ void test_9(const Parameter& p) {
 			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
 		
-		for (size_t y=kys0; y<kye0; ++y) {
+		int loopCount = height - 1;
+		if (bTop) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		if (bBottom) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		
+		for (size_t y=0; y<loopCount; ++y) {
 			horizontal.process(pFromLine, pWorkLine);
 			vertical.process(pWorkLine2, pWorkLine, pTotalLine, pToLine);
 			OffsetPtr(pFromLine, fromLineOffsetBytes);
@@ -1543,7 +1547,7 @@ void test_9(const Parameter& p) {
 		
 		if (bBottom) {
 			pWorkLine2.move(-2);
-			for (size_t y=kye0; y<height; ++y) {
+			for (size_t y=0; y<r; ++y) {
 				vertical.process(pWorkLine2, pWorkLine, pTotalLine, pToLine);
 				pWorkLine2.moveNext();
 				pWorkLine.movePrev();
@@ -1740,17 +1744,7 @@ void test_10(const Parameter& p) {
 	if ((1<<SHIFT) % len) {
 		++invLen;
 	}
-
-	int kys0 = 1;
-	int kye0 = height;
-	if (bTop) {
-		kys0 = std::min<int>(height, 1 + r);
-	}
-	if (bBottom) {
-		kye0 = std::max<int>(0, height - r);
-	}
 	
-	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
 	for (size_t n=0; n<iterationCount; ++n) {
 		
 		const uint8_t* pFrom;
@@ -1826,9 +1820,11 @@ void test_10(const Parameter& p) {
 			for (size_t x=0; x<width; ++x) {
 				pTotalLine[x] = 0;
 			}
-			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
-			pWorkLine.move(-r);
-			pWorkLine2.move(-r);
+			int offset = (iterationCount - n) * -r;
+			OffsetPtr(pFromLine, offset * fromLineOffsetBytes);
+			pWorkLine.move(offset);
+			pWorkLine2.move(offset);
+			OffsetPtr(pToLine, (iterationCount - n - 1) * -r * toLineOffsetBytes);
 			for (int y=-r; y<=r; ++y) {
 				horizontal.process(pFromLine, pWorkLine);
 				const __m128i* pMWork = (const __m128i*)pWorkLine;
@@ -1855,7 +1851,18 @@ void test_10(const Parameter& p) {
 			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
 		
-		for (size_t y=kys0; y<kye0; ++y) {
+		int loopCount = height - 1;
+		if (bTop) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		if (bBottom) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		for (size_t y=0; y<loopCount; ++y) {
 			horizontal.process(pFromLine, pWorkLine);
 			vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pToLine);
 			OffsetPtr(pFromLine, fromLineOffsetBytes);
@@ -1866,7 +1873,7 @@ void test_10(const Parameter& p) {
 		
 		if (bBottom) {
 			pWorkLine.move(-2);
-			for (size_t y=kye0; y<height; ++y) {
+			for (size_t y=0; y<r; ++y) {
 				vertical.process((const __m128i*)pWorkLine2, (const __m128i*)pWorkLine, (__m128i*)pTotalLine, (__m128i*)pToLine);
 				pWorkLine2.moveNext();
 				pWorkLine.movePrev();
