@@ -67,8 +67,8 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
-	pCommon.radius = 8;
-	pCommon.iterationCount = 3;
+	pCommon.radius = 4;
+	pCommon.iterationCount = 5;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
 		blur_1b::Parameter& p = params[i];
@@ -94,10 +94,10 @@ int main(int argc, char* argv[])
 		//blur_1b::test_5_v,
 		//blur_1b::test_5_h,
 		//blur_1b::test_6_v,
-		blur_1b::test_7_h,
-		blur_1b::test_7_v,
-		blur_1b::test_8,
-		blur_1b::test_9,
+		//blur_1b::test_7_h,
+		//blur_1b::test_7_v,
+		//blur_1b::test_8,
+		//blur_1b::test_9,
 		blur_1b::test_10,
 	};
 	
