@@ -1430,6 +1430,31 @@ void test_9(const Parameter& p) {
 		}
 	} horizontal(width, r, invLen);
 	
+	struct VerticalCollector {
+		const uint16_t width;
+		const int invLen;
+		VerticalCollector(uint16_t width, int invLen)
+			:
+			width(width),
+			invLen(invLen)
+		{
+		}
+		
+		__forceinline void process(
+			const uint8_t* __restrict pSubLine,
+			const uint8_t* __restrict pAddLine,
+			int16_t* __restrict pTotalLine,
+			uint8_t* __restrict pDestLine
+			)
+		{
+			for (size_t x=0; x<width; ++x) {
+				int total = pTotalLine[x] - pSubLine[x] + pAddLine[x];
+				pDestLine[x] = (total * invLen) >> SHIFT;
+				pTotalLine[x] = total;
+			}
+		}
+	} vertical(width, invLen);
+	
 	// TODO: 複数回繰り返す場合は、読み取られる参照用の領域をちゃんと用意
 	for (size_t n=0; n<iterationCount; ++n) {
 		
@@ -1453,8 +1478,8 @@ void test_9(const Parameter& p) {
 		}
 		
 		const uint8_t* pFromLine = pFrom;
-		uint8_t* pWorkLine = pWork;
-		uint8_t* pWorkLine2 = pWorkLine;
+		RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
+		RingLinePtr<uint8_t*> pWorkLine2(pWorkLine);
 		uint8_t* pToLine = pTo;
 			
 		if (bTop) {
@@ -1463,31 +1488,27 @@ void test_9(const Parameter& p) {
 				pTotalLine[x] = pWorkLine[x];
 			}
 			OffsetPtr(pFromLine, fromLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			pWorkLine.moveNext();
 			for (size_t ky=1; ky<=r; ++ky) {
 				horizontal.process(pFromLine, pWorkLine);
 				for (size_t x=0; x<width; ++x) {
 					pTotalLine[x] += pWorkLine[x] * 2;
 				}
 				OffsetPtr(pFromLine, fromLineOffsetBytes);
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				pWorkLine.moveNext();
 			}
 			for (size_t x=0; x<width; ++x) {
 				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
 			}
 			OffsetPtr(pToLine, toLineOffsetBytes);
-			OffsetPtr(pWorkLine2, r * workLineOffsetBytes);
+			pWorkLine2.move(r);
 			
 			for (size_t y=1; y<=r; ++y) {
 				horizontal.process(pFromLine, pWorkLine);
-				for (size_t x=0; x<width; ++x) {
-					int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-					pToLine[x] = (total * invLen) >> SHIFT;
-					pTotalLine[x] = total;
-				}
+				vertical.process(pWorkLine2, pWorkLine, pTotalLine, pToLine);
 				OffsetPtr(pFromLine, fromLineOffsetBytes);
-				OffsetPtr(pWorkLine2, -workLineOffsetBytes);
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				pWorkLine2.movePrev();
+				pWorkLine.moveNext();
 				OffsetPtr(pToLine, toLineOffsetBytes);
 			}
 		}else {
@@ -1495,15 +1516,15 @@ void test_9(const Parameter& p) {
 				pTotalLine[x] = 0;
 			}
 			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
-			OffsetPtr(pWorkLine, -r * workLineOffsetBytes);
-			pWorkLine2 = pWorkLine;
+			pWorkLine.move(-r);
+			pWorkLine2.move(-r);
 			for (int y=-r; y<=r; ++y) {
 				horizontal.process(pFromLine, pWorkLine);
 				for (size_t x=0; x<width; ++x) {
 					pTotalLine[x] += pWorkLine[x];
 				}
 				OffsetPtr(pFromLine, fromLineOffsetBytes);
-				OffsetPtr(pWorkLine, workLineOffsetBytes);
+				pWorkLine.moveNext();
 			}
 			for (size_t x=0; x<width; ++x) {
 				pToLine[x] = (pTotalLine[x] * invLen) >> SHIFT;
@@ -1513,30 +1534,19 @@ void test_9(const Parameter& p) {
 		
 		for (size_t y=kys0; y<kye0; ++y) {
 			horizontal.process(pFromLine, pWorkLine);
-			for (size_t x=0; x<width; ++x) {
-				int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-				pToLine[x] = (total * invLen) >> SHIFT;
-				pTotalLine[x] = total;
-			}
+			vertical.process(pWorkLine2, pWorkLine, pTotalLine, pToLine);
 			OffsetPtr(pFromLine, fromLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
-			OffsetPtr(pWorkLine2, workLineOffsetBytes);
+			pWorkLine.moveNext();
+			pWorkLine2.moveNext();
 			OffsetPtr(pToLine, toLineOffsetBytes);
 		}
 		
 		if (bBottom) {
-			pWorkLine2 = pWork;
-			OffsetPtr(pWorkLine2, (kye0 - r) * workLineOffsetBytes);
-			pWorkLine = pWork;
-			OffsetPtr(pWorkLine, (height - 1) * workLineOffsetBytes);
+			pWorkLine2.move(-2);
 			for (size_t y=kye0; y<height; ++y) {
-				for (size_t x=0; x<width; ++x) {
-					int total = pTotalLine[x] - pWorkLine2[x] + pWorkLine[x];
-					pToLine[x] = (total * invLen) >> SHIFT;
-					pTotalLine[x] = total;
-				}
-				OffsetPtr(pWorkLine2, workLineOffsetBytes);
-				OffsetPtr(pWorkLine, -workLineOffsetBytes);
+				vertical.process(pWorkLine2, pWorkLine, pTotalLine, pToLine);
+				pWorkLine2.moveNext();
+				pWorkLine.movePrev();
 				OffsetPtr(pToLine, toLineOffsetBytes);
 			}
 		}
