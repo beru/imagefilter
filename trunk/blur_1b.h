@@ -40,5 +40,6 @@ void test_7_v(const Parameter& p);
 void test_8(const Parameter& p);
 void test_9(const Parameter& p);
 void test_10(const Parameter& p);
+void test_11(const Parameter& p);
 
 } // namespace blur_1b

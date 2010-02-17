@@ -1395,7 +1395,10 @@ void test_9(const Parameter& p) {
 		{
 		}
 		
-		__forceinline void process(const uint8_t* __restrict pSrc, uint8_t* __restrict pWork) {
+		__forceinline void process(
+			const uint8_t* __restrict pSrc,
+			uint8_t* __restrict pWork
+		) {
 			const uint8_t* pSrc2 = pSrc + r;
 			int total = *pSrc++;
 			for (size_t kx=1; kx<=r; ++kx) {
@@ -1585,7 +1588,10 @@ struct HorizontalProcessor {
 	{
 	}
 	
-	__forceinline void process(const uint8_t* __restrict pSrc, uint8_t* __restrict pWork) {
+	__forceinline void process(
+		const uint8_t* __restrict pSrc,
+		uint8_t* __restrict pWork
+	) {
 		const uint8_t* pSrcOrg = pSrc;
 		
 		const uint8_t* pSrc2 = pSrc + r;
@@ -1882,6 +1888,10 @@ void test_10(const Parameter& p) {
 		}
 	}
 	_mm_mfence();
+}
+
+void test_11(const Parameter& p) {
+
 }
 
 } // namespace blur_1b
