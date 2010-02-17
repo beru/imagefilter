@@ -12,6 +12,7 @@
 #include "ThreadPool.h"
 
 #include <conio.h>
+#include "sym.h"
 
 int main(int argc, char* argv[])
 {
@@ -50,6 +51,7 @@ int main(int argc, char* argv[])
 		pSrc[i] = palettes[4 * pSrc[i]];
 	}
 	
+	
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 	
@@ -67,8 +69,8 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
-	pCommon.radius = 4;
-	pCommon.iterationCount = 5;
+	pCommon.radius = 10;
+	pCommon.iterationCount = 1;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
 		blur_1b::Parameter& p = params[i];
@@ -96,13 +98,14 @@ int main(int argc, char* argv[])
 		//blur_1b::test_6_v,
 		//blur_1b::test_7_h,
 		//blur_1b::test_7_v,
-		//blur_1b::test_8,
-		//blur_1b::test_9,
+		blur_1b::test_8,
+		blur_1b::test_9,
 		blur_1b::test_10,
+		blur_1b::test_11,
 	};
 	
 	Timer t;
-	
+	Sym sym;
 	for (size_t i=0; i<countof(ptrs); ++i) {
 		t.Start();
 		
@@ -110,7 +113,11 @@ int main(int argc, char* argv[])
 			threads.Start(ptrs[i], &params[0]);
 			threads.Join();
 		}
-		printf("%p, %f\n", pDest, t.ElapsedSecond() * 1000.0);
+		double sec = t.ElapsedSecond();
+		
+		std::string name = sym.GetName(ptrs[i]);
+		
+		printf("%s %p, %f\n", name.c_str(), pDest, sec * 1000.0);
 	}
 	
 	_getch();

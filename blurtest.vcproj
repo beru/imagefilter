@@ -53,7 +53,7 @@
 				BufferSecurityCheck="false"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				DebugInformationFormat="4"
+				DebugInformationFormat="3"
 				ForcedIncludeFiles="common.h"
 			/>
 			<Tool
@@ -70,7 +70,10 @@
 				LinkIncremental="2"
 				GenerateManifest="true"
 				GenerateDebugInformation="true"
+				GenerateMapFile="true"
+				MapExports="true"
 				SubSystem="1"
+				RandomizedBaseAddress="1"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -393,6 +396,14 @@
 		</File>
 		<File
 			RelativePath=".\stdint.h"
+			>
+		</File>
+		<File
+			RelativePath=".\sym.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\sym.h"
 			>
 		</File>
 		<File
