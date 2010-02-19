@@ -51,13 +51,13 @@ int main(int argc, char* argv[])
 		pSrc[i] = palettes[4 * pSrc[i]];
 	}
 	
-	
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 	
-//	const size_t nThreads = si.dwNumberOfProcessors;
-	const size_t nThreads = 1;
+	const size_t nThreads = si.dwNumberOfProcessors;
+//	const size_t nThreads = 1;
 //	const size_t nThreads = 2;
+//	const size_t nThreads = 4;
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
 	const size_t partSize = size / nThreads;
