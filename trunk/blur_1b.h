@@ -21,6 +21,8 @@ struct Parameter {
 	ptrdiff_t workLineOffsetBytes;
 	
 	void* pTotal;
+	void* pMinus;
+	void* pPlus;
 	
 	uint8_t radius;
 	

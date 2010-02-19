@@ -65,6 +65,10 @@ GaussianFilterみたいな係数値で綺麗にぼかすべきでは？
 
 	Box Filter だと係数値の足し算を毎回行わないで、端の値の引き算足し算で求められるけど、Gaussian Blur では係数値の掛け算＋足し算を毎回行う必要がある。
 
+Flashのぼかし処理はBoxFilter
+
+	http://www.kaourantin.net/2005/08/implementing-blur-filter-in-flash.html
+
 ----------
 
 http://www.blackpawn.com/texts/blur/default.html
