@@ -2041,10 +2041,9 @@ void test_11(const Parameter& p) {
 	uint8_t* pToLine = pDest;
 	ptrdiff_t toLineOffsetBytes = destLineOffsetBytes;
 	
-	//
-	uint8_t* pWorkLine = pWork;
-	const uint8_t* pMinusPlusSrcLine = (const uint8_t*)pWorkLine;
-	OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
+	RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
+	RingLinePtr<uint8_t*> pMinusPlusSrcLine = pWorkLine;
+	pMinusPlusSrcLine.moveNext();
 	{
 		horizontal.process(pFromLine, pWorkLine);
 		for (size_t x=0; x<width; ++x) {
@@ -2054,7 +2053,7 @@ void test_11(const Parameter& p) {
 			pTotalLine[x] = v * (r + 1);
 		}
 		OffsetPtr(pFromLine, fromLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
+		pWorkLine.moveNext();
 		for (size_t i=0; i<r; ++i) {
 			horizontal.process(pFromLine, pWorkLine);
 			const size_t factor = (r - i) * 2;
@@ -2065,43 +2064,41 @@ void test_11(const Parameter& p) {
 				pTotalLine[x] += v * factor;
 			}
 			OffsetPtr(pFromLine, fromLineOffsetBytes);
-			OffsetPtr(pWorkLine, workLineOffsetBytes);
+			pWorkLine.moveNext();
 		}
 		for (size_t x=0; x<width; ++x) {
 			pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
 		}
 		OffsetPtr(pToLine, toLineOffsetBytes);
 	}
-	const uint8_t* pPlusSrcLine = (const uint8_t*)pWorkLine;
-	const uint8_t* pMinusSrcLine = (const uint8_t*)pWorkLine;
-	OffsetPtr(pMinusSrcLine, -workLineOffsetBytes);
+	RingLinePtr<uint8_t*> pPlusSrcLine = pWorkLine;
+	RingLinePtr<uint8_t*> pMinusSrcLine = pWorkLine;
+	pMinusSrcLine.movePrev();
 	for (size_t i=0; i<r; ++i) {
-		horizontal.process(pFromLine, pWorkLine);
+		horizontal.process(pFromLine, pPlusSrcLine);
 		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
 		OffsetPtr(pFromLine, fromLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pPlusSrcLine, workLineOffsetBytes);
-		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
-		OffsetPtr(pMinusSrcLine, -workLineOffsetBytes);
+		pPlusSrcLine.moveNext();
+		pMinusPlusSrcLine.moveNext();
+		pMinusSrcLine.movePrev();
 		OffsetPtr(pToLine, toLineOffsetBytes);
 	}
 	const size_t loopCount = height - r * 2 - 1;
 	for (size_t i=0; i<loopCount; ++i) {
-		horizontal.process(pFromLine, pWorkLine);
+		horizontal.process(pFromLine, pPlusSrcLine);
 		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
 		OffsetPtr(pFromLine, fromLineOffsetBytes);
-		OffsetPtr(pWorkLine, workLineOffsetBytes);
-		OffsetPtr(pPlusSrcLine, workLineOffsetBytes);
-		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
-		OffsetPtr(pMinusSrcLine, workLineOffsetBytes);
+		pPlusSrcLine.moveNext();
+		pMinusPlusSrcLine.moveNext();
+		pMinusSrcLine.moveNext();
 		OffsetPtr(pToLine, toLineOffsetBytes);
 	}
-	OffsetPtr(pPlusSrcLine, -2 * workLineOffsetBytes);
+	pPlusSrcLine.move(-2);
 	for (size_t i=0; i<r; ++i) {
 		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
-		OffsetPtr(pPlusSrcLine, -workLineOffsetBytes);
-		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
-		OffsetPtr(pMinusSrcLine, workLineOffsetBytes);
+		pPlusSrcLine.movePrev();
+		pMinusPlusSrcLine.moveNext();
+		pMinusSrcLine.moveNext();
 		OffsetPtr(pToLine, toLineOffsetBytes);
 	}
 
