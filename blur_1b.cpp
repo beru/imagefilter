@@ -1899,7 +1899,7 @@ void test_10(const Parameter& p) {
 struct HorizontalProcessor_Tent {
 	const uint16_t width;
 	const int r;
-	const int invLen;
+	const size_t invCnt;
 	
 	const size_t kxs0;
 	const size_t kxe0;
@@ -1907,12 +1907,12 @@ struct HorizontalProcessor_Tent {
 	HorizontalProcessor_Tent(
 		uint16_t width,
 		int r,
-		int invLen
+		size_t invCnt
 	)
 		:
 		width(width),
 		r(r),
-		invLen(invLen),
+		invCnt(invCnt),
 		kxs0( std::min<size_t>(width, 1 + r) ),
 		kxe0( std::max<int>(0, width - r) )
 	{
@@ -1927,7 +1927,6 @@ struct HorizontalProcessor_Tent {
 		int minus = 0;
 		int plus = 0;
 		int total = 0;
-		int invCnt = (1<<SHIFT) / ((r + 1) * (r + 1));
 		const uint8_t* pMinusPlus = pFrom + 1;
 		{
 			int v = *pFrom++;
@@ -1975,25 +1974,138 @@ struct HorizontalProcessor_Tent {
 	}
 };
 
-void test_11(const Parameter& p) {
+struct VerticalProcessor_Tint {
+	const size_t width;
+	const size_t invCnt;
+	int16_t* pMinusLine;
+	int16_t* pPlusLine;
+	int32_t* pTotalLine;
+	
+	VerticalProcessor_Tint(
+		size_t width,
+		size_t invCnt,
+		int16_t* pMinusLine,
+		int16_t* pPlusLine,
+		int32_t* pTotalLine
+	)
+		:
+		width(width),
+		invCnt(invCnt),
+		pMinusLine(pMinusLine),
+		pPlusLine(pPlusLine),
+		pTotalLine(pTotalLine)
+	{
+	}
+	void process(
+		const uint8_t* pMinusSrcLine,
+		const uint8_t* pMinusPlusSrcLine,
+		const uint8_t* pPlusSrcLine,
+		uint8_t* pToLine
+	) {
+		for (size_t x=0; x<width; ++x) {
+			int plus = pPlusLine[x];
+			plus += pPlusSrcLine[x];
+			int minus = pMinusLine[x];
+			int total = pTotalLine[x] + plus - minus;
+			pToLine[x] = (total * invCnt) >> SHIFT;
+			int v = pMinusPlusSrcLine[x];
+			minus += v - pMinusSrcLine[x];
+			plus -= v;
+			pMinusLine[x] = minus;
+			pPlusLine[x] = plus;
+			pTotalLine[x] = total;
+		}	
+	}
+};
 
+void test_11(const Parameter& p) {
+	
 	BLUR_EXTRACT_PARAMS;
 	
-	int r = std::min<int>(height, std::min<int>(width, radius));
+	const size_t r = std::min<size_t>(height, std::min<size_t>(width, radius));
 	
 	int len = r * 2 + 1; // diameter
 	int invLen = (1<<SHIFT) / len;
 	if ((1<<SHIFT) % len) {
 		++invLen;
 	}
-	
-	HorizontalProcessor_Tent horizontal(width, r, invLen);
+	const size_t invCnt = (1<<SHIFT) / ((r + 1) * (r + 1));
+	HorizontalProcessor_Tent horizontal(width, r, invCnt);
+	int16_t* pMinusLine = (int16_t*)p.pMinus;
+	int16_t* pPlusLine = (int16_t*)p.pPlus;
+	int32_t* pTotalLine = (int32_t*)p.pTotal;
+	VerticalProcessor_Tint vertical(width, invCnt, pMinusLine, pPlusLine, pTotalLine);
 	
 	const uint8_t* pFromLine = pSrc;
 	ptrdiff_t fromLineOffsetBytes = srcLineOffsetBytes;
 	uint8_t* pToLine = pDest;
 	ptrdiff_t toLineOffsetBytes = destLineOffsetBytes;
 	
+	//
+	uint8_t* pWorkLine = pWork;
+	const uint8_t* pMinusPlusSrcLine = (const uint8_t*)pWorkLine;
+	OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
+	{
+		horizontal.process(pFromLine, pWorkLine);
+		for (size_t x=0; x<width; ++x) {
+			int v = pWorkLine[x];
+			pMinusLine[x] = v;
+			pPlusLine[x] = 0;
+			pTotalLine[x] = v * (r + 1);
+		}
+		OffsetPtr(pFromLine, fromLineOffsetBytes);
+		OffsetPtr(pWorkLine, workLineOffsetBytes);
+		for (size_t i=0; i<r; ++i) {
+			horizontal.process(pFromLine, pWorkLine);
+			const size_t factor = (r - i) * 2;
+			for (size_t x=0; x<width; ++x) {
+				int v = pWorkLine[x];
+				pMinusLine[x] += v;
+				pPlusLine[x] += v;
+				pTotalLine[x] += v * factor;
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			OffsetPtr(pWorkLine, workLineOffsetBytes);
+		}
+		for (size_t x=0; x<width; ++x) {
+			pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
+		}
+		OffsetPtr(pToLine, toLineOffsetBytes);
+	}
+	const uint8_t* pPlusSrcLine = (const uint8_t*)pWorkLine;
+	const uint8_t* pMinusSrcLine = (const uint8_t*)pWorkLine;
+	OffsetPtr(pMinusSrcLine, -workLineOffsetBytes);
+	for (size_t i=0; i<r; ++i) {
+		horizontal.process(pFromLine, pWorkLine);
+		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
+		OffsetPtr(pFromLine, fromLineOffsetBytes);
+		OffsetPtr(pWorkLine, workLineOffsetBytes);
+		OffsetPtr(pPlusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pMinusSrcLine, -workLineOffsetBytes);
+		OffsetPtr(pToLine, toLineOffsetBytes);
+	}
+	const size_t loopCount = height - r * 2 - 1;
+	for (size_t i=0; i<loopCount; ++i) {
+		horizontal.process(pFromLine, pWorkLine);
+		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
+		OffsetPtr(pFromLine, fromLineOffsetBytes);
+		OffsetPtr(pWorkLine, workLineOffsetBytes);
+		OffsetPtr(pPlusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pMinusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pToLine, toLineOffsetBytes);
+	}
+	OffsetPtr(pPlusSrcLine, -2 * workLineOffsetBytes);
+	for (size_t i=0; i<r; ++i) {
+		vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
+		OffsetPtr(pPlusSrcLine, -workLineOffsetBytes);
+		OffsetPtr(pMinusPlusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pMinusSrcLine, workLineOffsetBytes);
+		OffsetPtr(pToLine, toLineOffsetBytes);
+	}
+
+/*	
 //	OffsetPtr(pFromLine, fromLineOffsetBytes * r);
 //	OffsetPtr(pToLine, toLineOffsetBytes * r);
 	for (size_t y=0; y<height; ++y) {
@@ -2001,7 +2113,7 @@ void test_11(const Parameter& p) {
 		OffsetPtr(pFromLine, fromLineOffsetBytes);
 		OffsetPtr(pToLine, toLineOffsetBytes);
 	}
-	
+*/	
 }
 
 } // namespace blur_1b
