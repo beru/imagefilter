@@ -42,7 +42,7 @@ static const int SHIFT = 15;	// do not change this value
 	uint8_t* pWork = p.pWork;\
 	uint8_t* pWork2 = p.pWork2;\
 	const ptrdiff_t workLineOffsetBytes = p.workLineOffsetBytes;\
-	int16_t* pTotalLine = p.pTotalLine;\
+	void* pTotal = p.pTotal;\
 	const uint8_t radius = p.radius;\
 	const uint8_t iterationCount = p.iterationCount;
 
@@ -648,6 +648,8 @@ void test_6_v(const Parameter& p) {
 		kye0 = std::max<int>(0, height - r);
 	}
 	
+	uint16_t* pTotalLine = (uint16_t*) pTotal;
+	
 	for (size_t n=0; n<iterationCount; ++n) {
 		
 		const uint8_t* pFrom;
@@ -944,6 +946,7 @@ void test_7_v(const Parameter& p) {
 		++invLen;
 	}
 	__m128i mInvLeni =  _mm_set1_epi16(invLen);
+	uint16_t* pTotalLine = (uint16_t*) pTotal;
 	
 	// vertical
 	struct Worker {
@@ -1167,6 +1170,7 @@ void test_8(const Parameter& p) {
 	BLUR_EXTRACT_PARAMS;
 	
 	int r = std::min<int>(height, std::min<int>(width, radius));
+	uint16_t* pTotalLine = (uint16_t*) pTotal;
 	
 	int len = r * 2 + 1; // diameter
 	int invLen = (1<<SHIFT) / len;
@@ -1187,8 +1191,8 @@ void test_8(const Parameter& p) {
 	HorizontalCollector horizontal(width, r);
 	
 	struct MovOperator {
-		uint8_t* __restrict pXDest;
-		int16_t* __restrict pYTotal;
+		uint8_t* pXDest;
+		uint16_t* pYTotal;
 		const int invLen;
 		
 		MovOperator(int invLen) : invLen(invLen) {}
@@ -1201,8 +1205,8 @@ void test_8(const Parameter& p) {
 	};
 
 	struct AddOperator {
-		uint8_t* __restrict pXDest;
-		int16_t* __restrict pYTotal;
+		uint8_t* pXDest;
+		uint16_t* pYTotal;
 		int invLen;
 		
 		AddOperator(int invLen) : invLen(invLen) {}
@@ -1215,8 +1219,8 @@ void test_8(const Parameter& p) {
 	};
 
 	struct Add2Operator {
-		uint8_t* __restrict pXDest;
-		int16_t* __restrict pYTotal;
+		uint8_t* pXDest;
+		uint16_t* pYTotal;
 		int invLen;
 		
 		Add2Operator(int invLen) : invLen(invLen) {}
@@ -1231,7 +1235,7 @@ void test_8(const Parameter& p) {
 	struct SlideOperator {
 		uint8_t* __restrict pXDest;
 		const uint8_t* __restrict pYSub;
-		int16_t* __restrict pYTotal;
+		uint16_t* pYTotal;
 		uint8_t* __restrict pYDest;
 		int invLen;
 		
@@ -1366,6 +1370,7 @@ void test_9(const Parameter& p) {
 	BLUR_EXTRACT_PARAMS;
 	
 	int r = std::min<int>(height, std::min<int>(width, radius));
+	uint16_t* pTotalLine = (uint16_t*) pTotal;
 	
 	int len = r * 2 + 1; // diameter
 	int invLen = (1<<SHIFT) / len;
@@ -1437,7 +1442,7 @@ void test_9(const Parameter& p) {
 		__forceinline void process(
 			const uint8_t* __restrict pSubLine,
 			const uint8_t* __restrict pAddLine,
-			int16_t* __restrict pTotalLine,
+			uint16_t* pTotalLine,
 			uint8_t* __restrict pDestLine
 			)
 		{
@@ -1744,6 +1749,7 @@ void test_10(const Parameter& p) {
 	BLUR_EXTRACT_PARAMS;
 	
 	int r = std::min<int>(height, std::min<int>(width, radius));
+	uint16_t* pTotalLine = (uint16_t*) pTotal;
 	
 	int len = r * 2 + 1; // diameter
 	int invLen = (1<<SHIFT) / len;
@@ -1890,8 +1896,112 @@ void test_10(const Parameter& p) {
 	_mm_mfence();
 }
 
+struct HorizontalProcessor_Tent {
+	const uint16_t width;
+	const int r;
+	const int invLen;
+	
+	const size_t kxs0;
+	const size_t kxe0;
+	
+	HorizontalProcessor_Tent(
+		uint16_t width,
+		int r,
+		int invLen
+	)
+		:
+		width(width),
+		r(r),
+		invLen(invLen),
+		kxs0( std::min<size_t>(width, 1 + r) ),
+		kxe0( std::max<int>(0, width - r) )
+	{
+	}
+
+	__forceinline void process(
+		const uint8_t* __restrict pFrom,
+		uint8_t* __restrict pTo
+	) {
+		const uint8_t* pFromInit = pFrom;
+		
+		int minus = 0;
+		int plus = 0;
+		int total = 0;
+		int invCnt = (1<<SHIFT) / ((r + 1) * (r + 1));
+		const uint8_t* pMinusPlus = pFrom + 1;
+		{
+			int v = *pFrom++;
+			minus = v;
+			total = v * (r + 1);
+		}
+		for (size_t i=0; i<r; ++i) {
+			int v = *pFrom++;
+			minus += v;
+			plus += v;
+			total += v * (r - i) * 2;
+		}
+		*pTo++ = (total * invCnt) >> SHIFT;
+		const uint8_t* pPlus = pFrom;
+		const uint8_t* pMinus = pFrom - 1;
+		for (size_t i=0; i<r; ++i) {
+			plus += *pPlus++;
+			total += plus - minus;
+			*pTo++ = (total * invCnt) >> SHIFT;
+			int v = *pMinusPlus++;
+			minus += v - *pMinus--;
+			plus -= v;
+		}
+		assert(pMinus == pFromInit);
+		assert(pPlus == pFromInit + r*2+1);
+		const size_t loopCount = width - r * 2 - 1;
+		for (size_t i=0; i<loopCount; ++i) {
+			plus += *pPlus++;
+			total += plus - minus;
+			*pTo++ = (total * invCnt) >> SHIFT;
+			int v = *pMinusPlus++;
+			minus += v - *pMinus++;
+			plus -= v;
+		}
+		pPlus -= 2;
+		for (size_t i=0; i<r; ++i) {
+			plus += *pPlus--;
+			total += plus - minus;
+			*pTo++ = (total * invCnt) >> SHIFT;
+			int v = *pMinusPlus++;
+			minus += v - *pMinus++;
+			plus -= v;
+		}
+		
+	}
+};
+
 void test_11(const Parameter& p) {
 
+	BLUR_EXTRACT_PARAMS;
+	
+	int r = std::min<int>(height, std::min<int>(width, radius));
+	
+	int len = r * 2 + 1; // diameter
+	int invLen = (1<<SHIFT) / len;
+	if ((1<<SHIFT) % len) {
+		++invLen;
+	}
+	
+	HorizontalProcessor_Tent horizontal(width, r, invLen);
+	
+	const uint8_t* pFromLine = pSrc;
+	ptrdiff_t fromLineOffsetBytes = srcLineOffsetBytes;
+	uint8_t* pToLine = pDest;
+	ptrdiff_t toLineOffsetBytes = destLineOffsetBytes;
+	
+//	OffsetPtr(pFromLine, fromLineOffsetBytes * r);
+//	OffsetPtr(pToLine, toLineOffsetBytes * r);
+	for (size_t y=0; y<height; ++y) {
+		horizontal.process(pFromLine, pToLine);
+		OffsetPtr(pFromLine, fromLineOffsetBytes);
+		OffsetPtr(pToLine, toLineOffsetBytes);
+	}
+	
 }
 
 } // namespace blur_1b

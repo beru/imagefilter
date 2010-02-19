@@ -55,8 +55,8 @@ int main(int argc, char* argv[])
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 	
-	const size_t nThreads = si.dwNumberOfProcessors;
-//	const size_t nThreads = 1;
+//	const size_t nThreads = si.dwNumberOfProcessors;
+	const size_t nThreads = 1;
 //	const size_t nThreads = 2;
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
-	pCommon.radius = 10;
+	pCommon.radius = 16;
 	pCommon.iterationCount = 1;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
 		p.pWork = pWork + i * partSize * 2;
 		p.pWork2 = pWork2 + i * partSize * 2;
 		p.pDest = pDest + i * partSize;
-		p.pTotalLine = (int16_t*) _mm_malloc(width * sizeof(int16_t), 64);
+		p.pTotal = _mm_malloc(width * sizeof(int32_t), 64);
 	}
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {

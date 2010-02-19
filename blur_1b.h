@@ -20,7 +20,7 @@ struct Parameter {
 	uint8_t* pWork2;
 	ptrdiff_t workLineOffsetBytes;
 	
-	int16_t* pTotalLine;
+	void* pTotal;
 	
 	uint8_t radius;
 	
@@ -28,18 +28,21 @@ struct Parameter {
 	
 };
 
-void test_1(const Parameter& p);
-void test_2(const Parameter& p);
-void test_3(const Parameter& p);
-void test_4(const Parameter& p);
-void test_5_h(const Parameter& p);
-void test_5_v(const Parameter& p);
-void test_6_v(const Parameter& p);
-void test_7_h(const Parameter& p);
-void test_7_v(const Parameter& p);
-void test_8(const Parameter& p);
-void test_9(const Parameter& p);
-void test_10(const Parameter& p);
-void test_11(const Parameter& p);
+// BoxFilter
+void test_1(const Parameter& p);		// 1 pass naive implementation
+void test_2(const Parameter& p);		// 1 pass naive implementation pointer optimized
+void test_3(const Parameter& p);		// 2 pass optimization (horizontal -> vertical)
+void test_4(const Parameter& p);		// 2 pass fixed point optimization
+void test_5_h(const Parameter& p);		// horizontal slide in-out optimization
+void test_5_v(const Parameter& p);		// vertical slide in-out optimization
+void test_6_v(const Parameter& p);		// vertical slide in-out sequential memory access optimization
+void test_7_h(const Parameter& p);		// horizontal slide in-out SSE optimization
+void test_7_v(const Parameter& p);		// vertical slide in-out sequential memory access SSE optimization
+void test_8(const Parameter& p);		// memory access optimized
+void test_9(const Parameter& p);		// memory access further optimized
+void test_10(const Parameter& p);		// SSE optimized
+
+// TentFilter
+void test_11(const Parameter& p);		// 
 
 } // namespace blur_1b
