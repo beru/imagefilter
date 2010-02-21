@@ -85,8 +85,7 @@ int main(int argc, char* argv[])
 		p.pWork2 = pWork2 + i * partSize * 2;
 		p.pDest = pDest + i * partSize;
 		p.pTotal = _mm_malloc(width * sizeof(int32_t), 64);
-		p.pMinus = _mm_malloc(width * sizeof(int32_t), 64);
-		p.pPlus = _mm_malloc(width * sizeof(int32_t), 64);
+		p.pModi = _mm_malloc(width * sizeof(int32_t), 64);
 	}
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {
@@ -104,6 +103,7 @@ int main(int argc, char* argv[])
 		blur_1b::test_9,
 		blur_1b::test_10,
 		blur_1b::test_11,
+//		blur_1b::test_12,
 	};
 	
 	Timer t;
