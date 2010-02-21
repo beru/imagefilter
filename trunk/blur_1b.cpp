@@ -28,7 +28,7 @@
 
 namespace blur_1b {
 
-static const int SHIFT = 15;	// do not change this value
+static const int SHIFT = 16;	// do not change this value
 
 #define BLUR_EXTRACT_PARAMS \
 	const uint8_t* const pSrc = p.pSrc;\
@@ -863,8 +863,8 @@ void test_7_h(const Parameter& p) {
 				
 				__m128i left = _mm_add_epi16(mTotal, mDiff0);
 				__m128i right = _mm_add_epi16(mTotal, mDiff1);
-				__m128i left2 = _mm_mulhrs_epi16(left, mInvLeni);
-				__m128i right2 = _mm_mulhrs_epi16(right, mInvLeni);
+				__m128i left2 = _mm_mulhi_epu16(left, mInvLeni);
+				__m128i right2 = _mm_mulhi_epu16(right, mInvLeni);
 				__m128i result = _mm_packus_epi16(left2, right2);
 	//			_mm_stream_si128(mPWork++, result);
 				*mPWork++ = result;
@@ -990,8 +990,8 @@ void test_7_v(const Parameter& p) {
 				pTotalLine[i*2+0] = mTotal0;
 				pTotalLine[i*2+1] = mTotal1;
 				
-				__m128i mDest0 = _mm_mulhrs_epi16(mTotal0, mInvLen);
-				__m128i mDest1 = _mm_mulhrs_epi16(mTotal1, mInvLen);
+				__m128i mDest0 = _mm_mulhi_epu16(mTotal0, mInvLen);
+				__m128i mDest1 = _mm_mulhi_epu16(mTotal1, mInvLen);
 				
 				__m128i mResult = _mm_packus_epi16(mDest0, mDest1);
 				
@@ -1660,8 +1660,8 @@ struct HorizontalProcessor {
 			
 			__m128i left = _mm_add_epi16(mTotal, mDiff0);
 			__m128i right = _mm_add_epi16(mTotal, mDiff1);
-			__m128i left2 = _mm_mulhrs_epi16(left, mInvLen);
-			__m128i right2 = _mm_mulhrs_epi16(right, mInvLen);
+			__m128i left2 = _mm_mulhi_epu16(left, mInvLen);
+			__m128i right2 = _mm_mulhi_epu16(right, mInvLen);
 			__m128i result = _mm_packus_epi16(left2, right2);
 			*mPWork++ = result;
 			mTotal = _mm_shufflehi_epi16(right, _MM_SHUFFLE(3,3,3,3));
@@ -1731,8 +1731,8 @@ struct VerticalProcessor {
 			pTotalLine[i*2+0] = mTotal0;
 			pTotalLine[i*2+1] = mTotal1;
 			
-			__m128i mDest0 = _mm_mulhrs_epi16(mTotal0, mInvLen);
-			__m128i mDest1 = _mm_mulhrs_epi16(mTotal1, mInvLen);
+			__m128i mDest0 = _mm_mulhi_epu16(mTotal0, mInvLen);
+			__m128i mDest1 = _mm_mulhi_epu16(mTotal1, mInvLen);
 			
 			__m128i mResult = _mm_packus_epi16(mDest0, mDest1);
 			
@@ -1966,7 +1966,7 @@ void test_11(const Parameter& p) {
 				total += modi;
 				*pTo++ = (total * invCnt) >> SHIFT;
 				int v = *pMinusPlus++;
-				modi = modi - 2 * v + *pMinus--;
+				modi += - 2 * v + *pMinus--;
 			}
 			assert(pMinus == pFromInit);
 			assert(pPlus == pFromInit + r*2+1);
@@ -1976,7 +1976,7 @@ void test_11(const Parameter& p) {
 				total += modi;
 				*pTo++ = (total * invCnt) >> SHIFT;
 				int v = *pMinusPlus++;
-				modi = modi - 2 * v + *pMinus++;
+				modi += - 2 * v + *pMinus++;
 			}
 			pPlus -= 2;
 			for (size_t i=0; i<r; ++i) {
@@ -1984,7 +1984,7 @@ void test_11(const Parameter& p) {
 				total += modi;
 				*pTo++ = (total * invCnt) >> SHIFT;
 				int v = *pMinusPlus++;
-				modi = modi - 2 * v + *pMinus++;
+				modi += - 2 * v + *pMinus++;
 			}
 			
 		}
@@ -2199,257 +2199,296 @@ struct HorizontalProcessor_Tent {
 	) {
 		const uint8_t* pFromInit = pFrom;
 		
-		int minus = 0;
-		int plus = 0;
+		int modi = 0;
 		int total = 0;
 		const uint8_t* pMinusPlus = pFrom + 1;
 		{
 			int v = *pFrom++;
-			minus = v;
+			modi = -v;
 			total = v * (r + 1);
 		}
 		for (size_t i=0; i<r; ++i) {
 			int v = *pFrom++;
-			minus += v;
-			plus += v;
 			total += v * (r - i) * 2;
 		}
 		*pTo++ = (total * invCnt) >> SHIFT;
 		const uint8_t* pPlus = pFrom;
 		const uint8_t* pMinus = pFrom - 1;
 		for (size_t i=0; i<r; ++i) {
-			plus += *pPlus++;
-			total += plus - minus;
+			modi += *pPlus++;
+			total += modi;
 			*pTo++ = (total * invCnt) >> SHIFT;
 			int v = *pMinusPlus++;
-			minus += v - *pMinus--;
-			plus -= v;
+			modi += - 2 * v + *pMinus--;
 		}
 		assert(pMinus == pFromInit);
 		assert(pPlus == pFromInit + r*2+1);
 		const size_t loopCount = width - r * 2 - 1;
 		for (size_t i=0; i<loopCount; ++i) {
-			plus += *pPlus++;
-			total += plus - minus;
+			modi += *pPlus++;
+			total += modi;
 			*pTo++ = (total * invCnt) >> SHIFT;
 			int v = *pMinusPlus++;
-			minus += v - *pMinus++;
-			plus -= v;
+			modi += - 2 * v + *pMinus++;
 		}
 		pPlus -= 2;
 		for (size_t i=0; i<r; ++i) {
-			plus += *pPlus--;
-			total += plus - minus;
+			modi += *pPlus--;
+			total += modi;
 			*pTo++ = (total * invCnt) >> SHIFT;
 			int v = *pMinusPlus++;
-			minus += v - *pMinus++;
-			plus -= v;
+			modi += - 2 * v + *pMinus++;
 		}
 		
 	}
 };
 
-//struct VerticalProcessor_Tint {
-//	const size_t width;
-//	const size_t invCnt;
-//	__m128i* pMinusLine;
-//	__m128i* pPlusLine;
-//	__m128i* pTotalLine;
-//	
-//	VerticalProcessor_Tint(
-//		size_t width,
-//		size_t invCnt,
-//		__m128i* pMinusLine,
-//		__m128i* pPlusLine,
-//		__m128i* pTotalLine
-//	)
-//		:
-//		width(width),
-//		invCnt(invCnt),
-//		pMinusLine(pMinusLine),
-//		pPlusLine(pPlusLine),
-//		pTotalLine(pTotalLine)
-//	{
-//	}
-//	void process(
-//		const __m128i* pMinusSrcLine,
-//		const __m128i* pMinusPlusSrcLine,
-//		const __m128i* pPlusSrcLine,
-//		__m128i* pToLine
-//	) {
-//		for (size_t x=0; x<width; ++x) {
-//			int plus = pPlusLine[x];
-//			plus += pPlusSrcLine[x];
-//			int minus = pMinusLine[x];
-//			size_t total = pTotalLine[x] + plus - minus;
-//			pToLine[x] = (total * invCnt) >> SHIFT;
-//			int v = pMinusPlusSrcLine[x];
-//			minus += v - pMinusSrcLine[x];
-//			plus -= v;
-//			pMinusLine[x] = minus;
-//			pPlusLine[x] = plus;
-//			pTotalLine[x] = total;
-//		}	
-//	}
-//};
+struct VerticalProcessor_Tint {
+	const size_t width;
+	const size_t invCnt;
+	const __m128i mInvCnt;
+	__m128i* pModiLine;
+	__m128i* pTotalLine;
+	
+	VerticalProcessor_Tint(
+		size_t width,
+		size_t invCnt,
+		__m128i* pModiLine,
+		__m128i* pTotalLine
+	)
+		:
+		width(width),
+		invCnt(invCnt),
+		mInvCnt(_mm_set1_epi16(invCnt)),
+		pModiLine(pModiLine),
+		pTotalLine(pTotalLine)
+	{
+	}
+	__forceinline void process(
+		const __m128i* pMinusSrcLine,
+		const __m128i* pMinusPlusSrcLine,
+		const __m128i* pPlusSrcLine,
+		__m128i* pToLine
+	) {
+		const size_t loopCount = width / 16;
+		for (size_t x=0; x<loopCount; ++x) {
+			__m128i plus = pPlusSrcLine[x];
+			__m128i plus0 = _mm_unpacklo_epi8(plus, _mm_setzero_si128());
+			__m128i plus1 = _mm_unpackhi_epi8(plus, _mm_setzero_si128());
+			__m128i modi0 = _mm_add_epi16(pModiLine[x*2+0], plus0);
+			__m128i modi1 = _mm_add_epi16(pModiLine[x*2+1], plus1);
+			
+			__m128i totalA = pTotalLine[x*4+0];
+			__m128i totalB = pTotalLine[x*4+1];
+			totalA = _mm_add_epi32(totalA, _mm_cvtepi16_epi32(modi0));
+			totalB = _mm_add_epi32(totalB, _mm_cvtepi16_epi32(_mm_srli_si128(modi0,8)));
+			pTotalLine[x*4+0] = totalA;
+			pTotalLine[x*4+1] = totalB;
+			__m128i total0 = _mm_packus_epi32(totalA, totalB);
+			
+			__m128i totalC = pTotalLine[x*4+2];
+			__m128i totalD = pTotalLine[x*4+3];
+			totalC = _mm_add_epi32(totalC, _mm_cvtepi16_epi32(modi1));
+			totalD = _mm_add_epi32(totalD, _mm_cvtepi16_epi32(_mm_srli_si128(modi1,8)));
+			pTotalLine[x*4+2] = totalC;
+			pTotalLine[x*4+3] = totalD;
+			__m128i total1 = _mm_packus_epi32(totalC, totalD);
+			
+			__m128i result0 = _mm_mulhi_epu16(total0, mInvCnt);
+			__m128i result1 = _mm_mulhi_epu16(total1, mInvCnt);
+			__m128i result = _mm_packus_epi16(result0, result1);
+			
+//			_mm_stream_si128(pToLine+x, result);
+			pToLine[x] = result;
+			
+			__m128i minusPlus = pMinusPlusSrcLine[x];
+			__m128i minusPlus0 = _mm_unpacklo_epi8(minusPlus, _mm_setzero_si128());
+			__m128i minusPlus1 = _mm_unpackhi_epi8(minusPlus, _mm_setzero_si128());
+			__m128i minus = pMinusSrcLine[x];
+			__m128i minus0 = _mm_unpacklo_epi8(minus, _mm_setzero_si128());
+			__m128i minus1 = _mm_unpackhi_epi8(minus, _mm_setzero_si128());
+			modi0 = _mm_add_epi16(modi0, minus0);
+			modi0 = _mm_sub_epi16(modi0, minusPlus0);
+			modi0 = _mm_sub_epi16(modi0, minusPlus0);
+			modi1 = _mm_add_epi16(modi1, minus1);
+			modi1 = _mm_sub_epi16(modi1, minusPlus1);
+			modi1 = _mm_sub_epi16(modi1, minusPlus1);
+			
+			pModiLine[x*2+0] = modi0;
+			pModiLine[x*2+1] = modi1;
+		}
+		const size_t remainCount = width & 0x0f;
+		int16_t* pModiLine2 = (int16_t*) pModiLine;
+		const uint8_t* pPlusSrcLine2 = (uint8_t*) pPlusSrcLine;
+		const uint8_t* pMinusPlusSrcLine2 = (uint8_t*) pMinusPlusSrcLine;
+		const uint8_t* pMinusSrcLine2 = (uint8_t*) pMinusSrcLine;
+		uint32_t* pTotalLine2 = (uint32_t*) pTotalLine;
+		uint8_t* pToLine2 = (uint8_t*) pToLine;
+		for (size_t x=0; x<remainCount; ++x) {
+			int modi = pModiLine2[x];
+			modi += pPlusSrcLine2[x];
+			size_t total = pTotalLine2[x] + modi;
+			pToLine2[x] = (total * invCnt) >> SHIFT;
+			int v = pMinusPlusSrcLine2[x];
+			modi += -2 * v + pMinusSrcLine2[x];
+			pModiLine2[x] = modi;
+			pTotalLine2[x] = total;
+		}
+	}
+};
 
-//void test_12(const Parameter& p) {
-//	
-//	BLUR_EXTRACT_PARAMS;
-//	
-//	const size_t r = std::min<size_t>(height, std::min<size_t>(width, radius));
-//	
-//	const size_t len = r * 2 + 1; // diameter
-//	size_t invLen = (1<<SHIFT) / len;
-//	if ((1<<SHIFT) % len) {
-//		++invLen;
-//	}
-//	
-//	const size_t invCnt = (1<<SHIFT) / ((r + 1) * (r + 1));
-//	HorizontalProcessor_Tent horizontal(width, r, invCnt);
-//	uint16_t* pMinusLine = (uint16_t*)p.pMinus;
-//	uint16_t* pPlusLine = (uint16_t*)p.pPlus;
-//	uint32_t* pTotalLine = (uint32_t*)p.pTotal;
-//	VerticalProcessor_Tint vertical(width, invCnt, pMinusLine, pPlusLine, pTotalLine);
-//	
-//	for (size_t n=0; n<iterationCount; ++n) {
-//		
-//		const uint8_t* pFromLine;
-//		ptrdiff_t fromLineOffsetBytes;
-//		if (n == 0) {
-//			pFromLine = pSrc;
-//			fromLineOffsetBytes = srcLineOffsetBytes;
-//		}else {
-//			pFromLine = pWork2;
-//			fromLineOffsetBytes = workLineOffsetBytes;
-//		}
-//		uint8_t* pToLine;
-//		ptrdiff_t toLineOffsetBytes;
-//		if (n == iterationCount - 1) {
-//			pToLine = pDest;
-//			toLineOffsetBytes = destLineOffsetBytes;
-//		}else {
-//			pToLine = pWork2;
-//			toLineOffsetBytes = workLineOffsetBytes;
-//		}
-//		
-//		RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
-//		RingLinePtr<uint8_t*> pMinusPlusSrcLine = pWorkLine;
-//		RingLinePtr<uint8_t*> pPlusSrcLine = pWorkLine;
-//		RingLinePtr<uint8_t*> pMinusSrcLine = pWorkLine;
-//		pMinusPlusSrcLine.moveNext();
-//		if (bTop) {
-//			horizontal.process(pFromLine, pWorkLine);
-//			for (size_t x=0; x<width; ++x) {
-//				int v = pWorkLine[x];
-//				pMinusLine[x] = v;
-//				pPlusLine[x] = 0;
-//				pTotalLine[x] = v * (r + 1);
-//			}
-//			OffsetPtr(pFromLine, fromLineOffsetBytes);
-//			pWorkLine.moveNext();
-//			for (size_t i=0; i<r; ++i) {
-//				horizontal.process(pFromLine, pWorkLine);
-//				const size_t factor = (r - i) * 2;
-//				for (size_t x=0; x<width; ++x) {
-//					int v = pWorkLine[x];
-//					pMinusLine[x] += v;
-//					pPlusLine[x] += v;
-//					pTotalLine[x] += v * factor;
-//				}
-//				OffsetPtr(pFromLine, fromLineOffsetBytes);
-//				pWorkLine.moveNext();
-//			}
-//			for (size_t x=0; x<width; ++x) {
-//				pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
-//			}
-//			OffsetPtr(pToLine, toLineOffsetBytes);
-//			pPlusSrcLine = pWorkLine;
-//			pMinusSrcLine = pWorkLine;
-//			pMinusSrcLine.movePrev();
-//			for (size_t i=0; i<r; ++i) {
-//				horizontal.process(pFromLine, pPlusSrcLine);
-//				vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
-//				OffsetPtr(pFromLine, fromLineOffsetBytes);
-//				pPlusSrcLine.moveNext();
-//				pMinusPlusSrcLine.moveNext();
-//				pMinusSrcLine.movePrev();
-//				OffsetPtr(pToLine, toLineOffsetBytes);
-//			}
-//		}else {
-//			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
-//			horizontal.process(pFromLine, pWorkLine);
-//			pMinusSrcLine = pWorkLine;
-//			for (size_t x=0; x<width; ++x) {
-//				int v = pWorkLine[x];
-//				pTotalLine[x] = v;
-//				pMinusLine[x] = v;
-//				pPlusLine[x] = 0;
-//			}
-//			OffsetPtr(pFromLine, fromLineOffsetBytes);
-//			pWorkLine.moveNext();
-//			for (size_t i=0; i<r; ++i) {
-//				horizontal.process(pFromLine, pWorkLine);
-//				const size_t factor = i + 2;
-//				for (size_t x=0; x<width; ++x) {
-//					int v = pWorkLine[x];
-//					pTotalLine[x] += v * factor;
-//					pMinusLine[x] += v;
-//				}
-//				OffsetPtr(pFromLine, fromLineOffsetBytes);
-//				pWorkLine.moveNext();
-//			}
-//			pMinusPlusSrcLine = pWorkLine;
-//			for (size_t i=0; i<r; ++i) {
-//				horizontal.process(pFromLine, pWorkLine);
-//				const size_t factor = r - i;
-//				for (size_t x=0; x<width; ++x) {
-//					int v = pWorkLine[x];
-//					pTotalLine[x] += v * factor;
-//					pPlusLine[x] += v;
-//				}
-//				OffsetPtr(pFromLine, fromLineOffsetBytes);
-//				pWorkLine.moveNext();
-//			}
-//			pPlusSrcLine = pWorkLine;
-//			for (size_t x=0; x<width; ++x) {
-//				pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
-//			}
-//			OffsetPtr(pToLine, toLineOffsetBytes);
-//		}
-//		size_t loopCount = height - 1;
-//		if (bTop) {
-//			loopCount -= r;
-//		}else {
-//			loopCount += (iterationCount - n - 1) * r;
-//		}
-//		if (bBottom) {
-//			loopCount -= r;
-//		}else {
-//			loopCount += (iterationCount - n - 1) * r;
-//		}
-//		for (size_t i=0; i<loopCount; ++i) {
-//			horizontal.process(pFromLine, pPlusSrcLine);
-//			vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
-//			OffsetPtr(pFromLine, fromLineOffsetBytes);
-//			pPlusSrcLine.moveNext();
-//			pMinusPlusSrcLine.moveNext();
-//			pMinusSrcLine.moveNext();
-//			OffsetPtr(pToLine, toLineOffsetBytes);
-//		}
-//		
-//		if (bBottom) {
-//			pPlusSrcLine.move(-2);
-//			for (size_t i=0; i<r; ++i) {
-//				vertical.process(pMinusSrcLine, pMinusPlusSrcLine, pPlusSrcLine, pToLine);
-//				pPlusSrcLine.movePrev();
-//				pMinusPlusSrcLine.moveNext();
-//				pMinusSrcLine.moveNext();
-//				OffsetPtr(pToLine, toLineOffsetBytes);
-//			}
-//		}
-//	}
-//	
-//}
+void test_12(const Parameter& p) {
+	
+	BLUR_EXTRACT_PARAMS;
+	
+	const size_t r = std::min<size_t>(height, std::min<size_t>(width, radius));
+	
+	const size_t len = r * 2 + 1; // diameter
+	size_t invLen = (1<<SHIFT) / len;
+	if ((1<<SHIFT) % len) {
+		++invLen;
+	}
+	
+	const size_t invCnt = (1<<SHIFT) / ((r + 1) * (r + 1));
+	HorizontalProcessor_Tent horizontal(width, r, invCnt);
+	int16_t* pModiLine = (int16_t*)p.pModi;
+	uint32_t* pTotalLine = (uint32_t*)p.pTotal;
+	VerticalProcessor_Tint vertical(width, invCnt, (__m128i*)pModiLine, (__m128i*)pTotalLine);
+	
+	for (size_t n=0; n<iterationCount; ++n) {
+		
+		const uint8_t* pFromLine;
+		ptrdiff_t fromLineOffsetBytes;
+		if (n == 0) {
+			pFromLine = pSrc;
+			fromLineOffsetBytes = srcLineOffsetBytes;
+		}else {
+			pFromLine = pWork2;
+			fromLineOffsetBytes = workLineOffsetBytes;
+		}
+		uint8_t* pToLine;
+		ptrdiff_t toLineOffsetBytes;
+		if (n == iterationCount - 1) {
+			pToLine = pDest;
+			toLineOffsetBytes = destLineOffsetBytes;
+		}else {
+			pToLine = pWork2;
+			toLineOffsetBytes = workLineOffsetBytes;
+		}
+		
+		RingLinePtr<uint8_t*> pWorkLine(len+1, 0, pWork, workLineOffsetBytes);
+		RingLinePtr<uint8_t*> pMinusPlusSrcLine = pWorkLine;
+		RingLinePtr<uint8_t*> pPlusSrcLine = pWorkLine;
+		RingLinePtr<uint8_t*> pMinusSrcLine = pWorkLine;
+		pMinusPlusSrcLine.moveNext();
+		if (bTop) {
+			horizontal.process(pFromLine, pWorkLine);
+			for (size_t x=0; x<width; ++x) {
+				int v = pWorkLine[x];
+				pModiLine[x] = -v;
+				pTotalLine[x] = v * (r + 1);
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			pWorkLine.moveNext();
+			for (size_t i=0; i<r; ++i) {
+				horizontal.process(pFromLine, pWorkLine);
+				const size_t factor = (r - i) * 2;
+				for (size_t x=0; x<width; ++x) {
+					int v = pWorkLine[x];
+					pTotalLine[x] += v * factor;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine.moveNext();
+			}
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+			pPlusSrcLine = pWorkLine;
+			pMinusSrcLine = pWorkLine;
+			pMinusSrcLine.movePrev();
+			for (size_t i=0; i<r; ++i) {
+				horizontal.process(pFromLine, pPlusSrcLine);
+				vertical.process((const __m128i*)pMinusSrcLine, (const __m128i*)pMinusPlusSrcLine, (const __m128i*)pPlusSrcLine, (__m128i*)pToLine);
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pPlusSrcLine.moveNext();
+				pMinusPlusSrcLine.moveNext();
+				pMinusSrcLine.movePrev();
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}else {
+			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			horizontal.process(pFromLine, pWorkLine);
+			pMinusSrcLine = pWorkLine;
+			for (size_t x=0; x<width; ++x) {
+				int v = pWorkLine[x];
+				pTotalLine[x] = v;
+				pModiLine[x] = -v;
+			}
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			pWorkLine.moveNext();
+			for (size_t i=0; i<r; ++i) {
+				horizontal.process(pFromLine, pWorkLine);
+				const size_t factor = i + 2;
+				for (size_t x=0; x<width; ++x) {
+					int v = pWorkLine[x];
+					pTotalLine[x] += v * factor;
+					pModiLine[x] -= v;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine.moveNext();
+			}
+			pMinusPlusSrcLine = pWorkLine;
+			for (size_t i=0; i<r; ++i) {
+				horizontal.process(pFromLine, pWorkLine);
+				const size_t factor = r - i;
+				for (size_t x=0; x<width; ++x) {
+					int v = pWorkLine[x];
+					pTotalLine[x] += v * factor;
+					pModiLine[x] += v;
+				}
+				OffsetPtr(pFromLine, fromLineOffsetBytes);
+				pWorkLine.moveNext();
+			}
+			pPlusSrcLine = pWorkLine;
+			for (size_t x=0; x<width; ++x) {
+				pToLine[x] = (pTotalLine[x] * invCnt) >> SHIFT;
+			}
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		size_t loopCount = height - 1;
+		if (bTop) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		if (bBottom) {
+			loopCount -= r;
+		}else {
+			loopCount += (iterationCount - n - 1) * r;
+		}
+		for (size_t i=0; i<loopCount; ++i) {
+			horizontal.process(pFromLine, pPlusSrcLine);
+			vertical.process((const __m128i*)pMinusSrcLine, (const __m128i*)pMinusPlusSrcLine, (const __m128i*)pPlusSrcLine, (__m128i*)pToLine);
+			OffsetPtr(pFromLine, fromLineOffsetBytes);
+			pPlusSrcLine.moveNext();
+			pMinusPlusSrcLine.moveNext();
+			pMinusSrcLine.moveNext();
+			OffsetPtr(pToLine, toLineOffsetBytes);
+		}
+		
+		if (bBottom) {
+			pPlusSrcLine.move(-2);
+			for (size_t i=0; i<r; ++i) {
+				vertical.process((const __m128i*)pMinusSrcLine, (const __m128i*)pMinusPlusSrcLine, (const __m128i*)pPlusSrcLine, (__m128i*)pToLine);
+				pPlusSrcLine.movePrev();
+				pMinusPlusSrcLine.moveNext();
+				pMinusSrcLine.moveNext();
+				OffsetPtr(pToLine, toLineOffsetBytes);
+			}
+		}
+	}
+	
+}
 
 } // namespace blur_1b
