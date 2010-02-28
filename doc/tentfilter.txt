@@ -1,17 +1,3 @@
-
-http://www.kaede-software.com/cat20/2kag3/cat/#001279
-http://www.wheatchex.com/projects/filters/
-http://web.archive.org/web/20060718054020/http://www.acm.uiuc.edu/siggraph/workshops/wjarosz_convolution_2001.pdf
-http://graphics.cs.ucdavis.edu/~bcbudge/ecs298_2004/filtering.ppt
-http://www.ph.tn.tudelft.nl/Courses/FIP/noframes/fip-Smoothin.html
-Quasi-Convolution Pyramidal Blurring http://wwwcg.in.tum.de/Research/data/Publications/grapp08.pdf
-http://www.gamedev.net/reference/programming/features/imageproc/page2.asp
-http://graphics.cs.cmu.edu/nsp/course/15-462/Fall07/462/papers/jaggy.pdf
-http://www.cs.cornell.edu/courses/cs4620/2009fa/lectures/14sampling.pdf
-http://www.cg.tuwien.ac.at/research/publications/2009/jeschke-09-solver/jeschke-09-solver-paper.pdf
-http://www.stanford.edu/class/cs448f/lectures/3.1/Fast%20Filtering%20Continued.pdf
-http://www.cb.uu.se/~cris/blog/index.php/archives/22
-
 ---------------
 
 横方向のSIMD化を行う場合、差分値の変化値（引く値と足す値）をそれぞれスライドして積み上げて生成。（先に差分にしてもOKか？）
