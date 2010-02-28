@@ -24,7 +24,8 @@
 
 #include "blur_1b.h"
 #include <algorithm>
-#include <smmintrin.h>
+#include <emmintrin.h>
+//#include <smmintrin.h>
 
 namespace blur_1b {
 
@@ -2277,22 +2278,25 @@ struct VerticalProcessor_Tint {
 			__m128i plus1 = _mm_unpackhi_epi8(plus, _mm_setzero_si128());
 			__m128i modi0 = _mm_add_epi16(pModiLine[x*2+0], plus0);
 			__m128i modi1 = _mm_add_epi16(pModiLine[x*2+1], plus1);
+			__m128i modi0Sign = _mm_cmplt_epi16(modi0, _mm_setzero_si128());
+			__m128i modi1Sign = _mm_cmplt_epi16(modi1, _mm_setzero_si128());
 			
 			__m128i totalA = pTotalLine[x*4+0];
 			__m128i totalB = pTotalLine[x*4+1];
-			totalA = _mm_add_epi32(totalA, _mm_cvtepi16_epi32(modi0));
-			totalB = _mm_add_epi32(totalB, _mm_cvtepi16_epi32(_mm_srli_si128(modi0,8)));
+			totalA = _mm_add_epi32(totalA, _mm_unpacklo_epi16(modi0, modi0Sign));
+			totalB = _mm_add_epi32(totalB, _mm_unpackhi_epi16(modi0, modi0Sign));
 			pTotalLine[x*4+0] = totalA;
 			pTotalLine[x*4+1] = totalB;
-			__m128i total0 = _mm_packus_epi32(totalA, totalB);
+			__m128i total0 = _mm_packs_epi32(totalA, totalB);
 			
 			__m128i totalC = pTotalLine[x*4+2];
 			__m128i totalD = pTotalLine[x*4+3];
-			totalC = _mm_add_epi32(totalC, _mm_cvtepi16_epi32(modi1));
-			totalD = _mm_add_epi32(totalD, _mm_cvtepi16_epi32(_mm_srli_si128(modi1,8)));
+			
+			totalC = _mm_add_epi32(totalC, _mm_unpacklo_epi16(modi1, modi1Sign));
+			totalD = _mm_add_epi32(totalD, _mm_unpackhi_epi16(modi1, modi1Sign));
 			pTotalLine[x*4+2] = totalC;
 			pTotalLine[x*4+3] = totalD;
-			__m128i total1 = _mm_packus_epi32(totalC, totalD);
+			__m128i total1 = _mm_packs_epi32(totalC, totalD);
 			
 			__m128i result0 = _mm_mulhi_epu16(total0, mInvCnt);
 			__m128i result1 = _mm_mulhi_epu16(total1, mInvCnt);
