@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <emmintrin.h>
 //#include <smmintrin.h>
+#include "RingLinePtr.h"
 
 namespace blur_1b {
 
@@ -46,91 +47,6 @@ static const int SHIFT = 16;	// do not change this value
 	void* pTotal = p.pTotal;\
 	const uint8_t radius = p.radius;\
 	const uint8_t iterationCount = p.iterationCount;
-
-template <typename PtrT>
-class RingLinePtr {
-private:
-	const size_t size;
-	int idx;
-	PtrT pCur;
-	const ptrdiff_t lineOffsetBytes;
-	PtrT const pFirst;
-	PtrT const pLast;
-public:
-	RingLinePtr(
-		size_t size,
-		size_t curIdx,
-		PtrT pCur,
-		ptrdiff_t lineOffsetBytes
-	)
-		:
-		size(size),
-		idx(curIdx),
-		pCur(pCur),
-		lineOffsetBytes(lineOffsetBytes),
-		pFirst( ((uint8_t*)pCur) + curIdx * -lineOffsetBytes ),
-		pLast( ((uint8_t*)pCur) + (size - 1 - curIdx) * lineOffsetBytes )
-	{
-		assert(curIdx < size);
-	}
-	
-	RingLinePtr& operator = (const RingLinePtr& p) {
-		assert(size == p.size);
-		assert(pFirst == p.pFirst);
-		assert(lineOffsetBytes == p.lineOffsetBytes);
-		assert(pLast == p.pLast);
-		idx = p.idx;
-		pCur = p.pCur;
-		return *this;
-	}
-	
-	RingLinePtr& moveNext() {
-		assert(idx < size);
-		++idx;
-		OffsetPtr(pCur, lineOffsetBytes);
-		if (idx == size) {
-			idx = 0;
-			pCur = pFirst;
-		}
-		return *this;
-	}
-	
-	RingLinePtr& movePrev() {
-		assert(idx < size);
-		if (idx == 0) {
-			assert(pCur == pFirst);
-			idx = size - 1;
-			pCur = pLast;
-		}else {
-			--idx;
-			OffsetPtr(pCur, -lineOffsetBytes);
-		}
-		return *this;
-	}
-
-	RingLinePtr& move(ptrdiff_t offset) {
-		idx += offset;
-		while (idx < 0) {
-			idx += size;
-		}
-		while (idx > size) {
-			idx -= size;
-		}
-		pCur = pFirst;
-		OffsetPtr(pCur, idx * lineOffsetBytes);
-		return *this;
-	}
-	
-	template <typename PT>
-	operator PT () const {
-		return (PT) pCur;
-	}
-
-	operator PtrT () const {
-		return pCur;
-	}
-
-};
 
 template <typename T>
 class Image {
@@ -1910,6 +1826,306 @@ void test_10(const Parameter& p) {
 void test_11(const Parameter& p) {
 	
 	BLUR_EXTRACT_PARAMS;
+
+	uint32_t hRad = p.radius;
+	uint32_t vRad = p.radius;
+	uint32_t hLen = 1 + hRad*2;
+	uint32_t vLen = 1 + vRad*2;
+	uint32_t invLen = 0xFFFFFF / (hLen*vLen);
+	uint32_t hCount = p.width;
+	uint32_t vCount = p.height;
+
+	const uint8_t* hLine = p.pSrc;
+	uint8_t* vLine = p.pDest;
+	OffsetPtr(vLine, destLineOffsetBytes * vRad);
+
+	uint32_t* vSumLine = (uint32_t*)pWork2;
+	RingLinePtr<uint16_t*> vMinusLine(vLen, 0, (uint16_t*)pWork, width*2);
+	RingLinePtr<uint16_t*> vPlusLine(vLen, 0, (uint16_t*)pWork, width*2);
+
+	// vTop collect
+	for (size_t y=0; y<vLen; ++y) {
+		const uint8_t* hMinus = hLine;
+		const uint8_t* hPlus = hLine+hLen;
+		size_t hSum = 0;
+		// hLeft collect
+		for (size_t x=0; x<hLen; ++x) {
+			hSum += hLine[x];
+		}
+		// hCenter
+		for (size_t x=hRad; x<hCount-hRad; ++x) {
+			hSum -= *hMinus++;
+			hSum += *hPlus++;
+			vPlusLine[x] = hSum;
+			vSumLine[x] += hSum;
+		}
+		// hRight
+		;
+		OffsetPtr(hLine, srcLineOffsetBytes);
+		vPlusLine.moveNext();
+	}
+
+	// vMiddle
+	for (size_t y=vRad; y<vCount-vRad; ++y) {
+
+		const uint8_t* hMinus = hLine;
+		const uint8_t* hPlus = hLine+hLen;
+		size_t hSum = 0;
+		// hLeft collect
+		for (size_t x=0; x<hLen; ++x) {
+			hSum += hLine[x];
+		}
+		// hCenter
+		for (size_t x=hRad; x<hCount-hRad; ++x) {
+			hSum -= *hMinus++;
+			hSum += *hPlus++;
+			
+			// in this way, vPlus memory read is not required.
+			// but memory access pattern is a bit complex.
+			uint32_t vSum = vSumLine[x];
+			vSum -= vMinusLine[x];
+			vSum += hSum;
+			vPlusLine[x] = hSum;
+			vSumLine[x] = vSum;
+			vLine[x] = (vSum * invLen) >> 24;
+		}
+		// hRight
+		;
+		OffsetPtr(hLine, srcLineOffsetBytes);
+		OffsetPtr(vLine, destLineOffsetBytes);
+		vMinusLine.moveNext();
+		vPlusLine.moveNext();
+	}
+
+}
+
+static __forceinline
+void repeatShiftSum3(__m128i m01, __m128i& m0, __m128i& m1, __m128i& remain0)
+{
+	m0 = _mm_unpacklo_epi8(m01, _mm_setzero_si128());
+	m1 = _mm_unpackhi_epi8(m01, _mm_setzero_si128());
+#if 1
+	remain0 = _mm_srli_si128(_mm_add_epi16(m1, _mm_srli_si128(m1, 2)), 12);
+
+	__m128i m01_1 = _mm_slli_si128(m01, 1);
+	__m128i m01_2 = _mm_slli_si128(m01, 2);
+	m0 = 
+		_mm_add_epi16(
+			_mm_add_epi16(
+				m0,
+				_mm_unpacklo_epi8(m01_1, _mm_setzero_si128())
+			),
+			_mm_unpacklo_epi8(m01_2, _mm_setzero_si128())
+		);
+	m1 = 
+		_mm_add_epi16(
+			_mm_add_epi16(
+				m1,
+				_mm_unpackhi_epi8(m01_1, _mm_setzero_si128())
+			),
+			_mm_unpackhi_epi8(m01_2, _mm_setzero_si128())
+		);
+#else
+	__m128i s0L = _mm_add_epi16(_mm_add_epi16(m0, _mm_slli_si128(m0, 2)), _mm_slli_si128(m0, 4));
+	__m128i s1L = _mm_add_epi16(_mm_add_epi16(m1, _mm_slli_si128(m1, 2)), _mm_slli_si128(m1, 4));
+	__m128i s0R = _mm_srli_si128(_mm_add_epi16(m0, _mm_srli_si128(m0, 2)), 12);
+	__m128i s1R = _mm_srli_si128(_mm_add_epi16(m1, _mm_srli_si128(m1, 2)), 12);
+
+	m0 = s0L;
+	m1 = _mm_add_epi16(s1L, s0R);
+	remain0 = s1R;
+#endif
+}
+
+template <size_t SHIFTS>
+static __forceinline
+void repeatShiftSum(__m128i main01, __m128i& main0, __m128i& main1, __m128i& remain0)
+{
+	
+	// TODO: efficiently construct slided sum
+	// 2 ^ 2 ^ 2 = 8
+	main0 = _mm_unpacklo_epi8(main01, _mm_setzero_si128());
+	main1 = _mm_unpackhi_epi8(main01, _mm_setzero_si128());
+
+	__m128i m0L = main0;
+	__m128i m0R = main0;
+	__m128i m1L = main1;
+	__m128i m1R = main1;
+	
+	__m128i s0L = main0;
+	__m128i s0R = main0;
+	__m128i s1L = main1;
+	__m128i s1R = main1;
+
+	for (size_t i=0; i<SHIFTS-1; ++i) {
+		m0L = _mm_slli_si128(m0L, 2);
+		m0R = _mm_srli_si128(m0R, 2);
+		m1L = _mm_slli_si128(m1L, 2);
+		m1R = _mm_srli_si128(m1R, 2);
+		s0L = _mm_add_epi16(s0L, m0L);
+		s0R = _mm_add_epi16(s0R, m0R);
+		s1L = _mm_add_epi16(s1L, m1L);
+		s1R = _mm_add_epi16(s1R, m1R);
+	}
+	
+	main0 = s0L;
+	s0R = _mm_srli_si128(s0R, (8-(SHIFTS-1))*2);
+	main1 = _mm_add_epi16(s1L, s0R);
+	remain0 = _mm_srli_si128(s1R, (8-(SHIFTS-1))*2);;
+}
+
+static __forceinline
+void repeatShiftNum(__m128i main01, __m128i& main0, __m128i& main1, __m128i& remain0, size_t count)
+{
+	switch (count) {
+	case 3:
+		repeatShiftSum3(main01, main0, main1, remain0);
+		break;
+	case 5:
+		repeatShiftSum<5>(main01, main0, main1, remain0);
+		break;
+	case 7:
+		repeatShiftSum<7>(main01, main0, main1, remain0);
+		break;
+	case 9:
+		repeatShiftSum<9>(main01, main0, main1, remain0);
+		break;
+	default:
+		break;
+	}
+}
+
+void test_12(const Parameter& p) {
+	
+	BLUR_EXTRACT_PARAMS;
+
+	uint32_t hRad = p.radius;
+	uint32_t vRad = p.radius;
+	uint32_t hLen = 1 + hRad*2;
+	uint32_t vLen = 1 + vRad*2;
+	uint32_t invLen = 0xFFFFFF / (hLen*vLen);
+	uint32_t hCount = p.width;
+	uint32_t vCount = p.height;
+
+	const __m128i mInvRatio = _mm_set1_epi16(0xFFFF / (hLen*vLen));
+	
+	if (hLen > 9) {
+		return;
+	}
+	
+	const uint8_t* hLine = p.pSrc;
+	uint8_t* vLine = p.pDest;
+	OffsetPtr(vLine, destLineOffsetBytes * vRad);
+
+	uint16_t* vSumLine = (uint16_t*)pWork2;
+	assert((ptrdiff_t)vSumLine % 16 == 0);
+	assert((width * 2) % 16 == 0);
+
+	RingLinePtr<uint16_t*> vMinusLine(vLen, 0, (uint16_t*)pWork, width*2);
+	RingLinePtr<uint16_t*> vPlusLine(vLen, 0, (uint16_t*)pWork, width*2);
+
+	// vTop collect
+	{
+		const uint8_t* hMinus = hLine;
+		const uint8_t* hPlus = hLine+hLen;
+		size_t hSum = 0;
+		// hLeft collect
+		for (size_t x=0; x<hLen; ++x) {
+			hSum += hLine[x];
+		}
+		// hCenter
+		for (size_t x=hRad; x<hCount-hRad; ++x) {
+			hSum -= *hMinus++;
+			hSum += *hPlus++;
+			vPlusLine[x] = hSum;
+			vSumLine[x] = hSum;
+		}
+		// hRight
+		;
+		OffsetPtr(hLine, srcLineOffsetBytes);
+		vPlusLine.moveNext();
+	}
+	for (size_t y=1; y<vLen; ++y) {
+		const uint8_t* hMinus = hLine;
+		const uint8_t* hPlus = hLine+hLen;
+		size_t hSum = 0;
+		// hLeft collect
+		for (size_t x=0; x<hLen; ++x) {
+			hSum += hLine[x];
+		}
+		// hCenter
+		for (size_t x=hRad; x<hCount-hRad; ++x) {
+			hSum -= *hMinus++;
+			hSum += *hPlus++;
+			vPlusLine[x] = hSum;
+			vSumLine[x] += hSum;
+		}
+		// hRight
+		;
+		OffsetPtr(hLine, srcLineOffsetBytes);
+		vPlusLine.moveNext();
+	}
+
+	__m128i* mvSumLine = (__m128i*)vSumLine;
+
+	// vMiddle
+	for (size_t y=vRad; y<vCount-vRad; ++y) {
+
+		assert((ptrdiff_t)hLine % 16 == 0);
+
+		const __m128i* mhLine = (const __m128i*)hLine;
+		__m128i m01 = mhLine[0];
+		__m128i m0 = _mm_unpacklo_epi8(m01, _mm_setzero_si128());
+		__m128i m1 = _mm_unpackhi_epi8(m01, _mm_setzero_si128());
+		__m128i m23 = mhLine[1];
+
+		// hLeft collect
+		__m128i m1r;
+
+		__m128i* mvLine = (__m128i*) vLine;
+		__m128i* mvMinusLine = vMinusLine;
+		__m128i* mvPlusLine = vMinusLine;
+		__m128i m0l = _mm_setzero_si128();
+		
+		// hCenter
+		const size_t loopCount = hCount / 16;
+		for (size_t i=0; i<loopCount; ++i) {
+			repeatShiftNum(mhLine[i], m0, m1, m1r, hLen);
+			m0 = _mm_add_epi16(m0l, m0);
+			__m128i sum0 = mvSumLine[i*2+0];
+			__m128i sum1 = mvSumLine[i*2+1];
+			__m128i minus0 = mvMinusLine[i*2+0];
+			__m128i minus1 = mvMinusLine[i*2+1];
+			sum0 = _mm_sub_epi16(sum0, minus0);
+			sum1 = _mm_sub_epi16(sum1, minus1);
+			mvPlusLine[i*2+0] = m0;
+			mvPlusLine[i*2+1] = m1;
+			sum0 = _mm_add_epi16(sum0, m0);
+			sum1 = _mm_add_epi16(sum1, m1);
+			mvSumLine[i*2+0] = sum0;
+			mvSumLine[i*2+1] = sum1;
+
+			_mm_stream_si128(mvLine+i, _mm_packus_epi16(
+				_mm_mulhi_epu16(sum0, mInvRatio),
+				_mm_mulhi_epu16(sum1, mInvRatio)
+				));
+			m0l = m1r;
+		}
+		// hRight
+		;
+		OffsetPtr(hLine, srcLineOffsetBytes);
+		OffsetPtr(vLine, destLineOffsetBytes);
+		vMinusLine.moveNext();
+		vPlusLine.moveNext();
+	}
+
+}
+
+
+
+void test_20(const Parameter& p) {
+	
+	BLUR_EXTRACT_PARAMS;
 	
 	const size_t r = std::min<size_t>(height, std::min<size_t>(width, radius));
 	
@@ -2341,7 +2557,7 @@ struct VerticalProcessor_Tint {
 	}
 };
 
-void test_12(const Parameter& p) {
+void test_21(const Parameter& p) {
 	
 	BLUR_EXTRACT_PARAMS;
 	

@@ -395,6 +395,10 @@
 			>
 		</File>
 		<File
+			RelativePath=".\RingLinePtr.h"
+			>
+		</File>
+		<File
 			RelativePath=".\stdint.h"
 			>
 		</File>

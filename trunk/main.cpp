@@ -54,10 +54,13 @@ int main(int argc, char* argv[])
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 	
-	const size_t nThreads = si.dwNumberOfProcessors;
-//	const size_t nThreads = 1;
+#ifdef _DEBUG
+	const size_t nThreads = 1;
 //	const size_t nThreads = 2;
 //	const size_t nThreads = 4;
+#else
+	const size_t nThreads = si.dwNumberOfProcessors;
+#endif
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
 	const size_t partSize = size / nThreads;
@@ -69,7 +72,7 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = width;
-	pCommon.radius = 10;
+	pCommon.radius = 1;
 	pCommon.iterationCount = 1;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
@@ -91,23 +94,29 @@ int main(int argc, char* argv[])
 	BlurFuncPtr ptrs[] = {
 		//blur_1b::test_1,
 		//blur_1b::test_2,
-		//blur_1b::test_3,
-		//blur_1b::test_4,
-		//blur_1b::test_5_h,
-		//blur_1b::test_5_v,
-		//blur_1b::test_5_h,
-		//blur_1b::test_6_v,
-		//blur_1b::test_7_h,
-		//blur_1b::test_7_v,
+		blur_1b::test_3,
+		blur_1b::test_4,
+		blur_1b::test_5_h,
+		blur_1b::test_5_v,
+		blur_1b::test_5_h,
+		blur_1b::test_6_v,
+		blur_1b::test_7_h,
+		blur_1b::test_7_v,
 		blur_1b::test_8,
 		blur_1b::test_9,
 		blur_1b::test_10,
 		blur_1b::test_11,
 		blur_1b::test_12,
+
+		//blur_1b::test_21,
+		//blur_1b::test_22,
 	};
 	
 	Timer t;
 	Sym sym;
+
+	printf("%d %d %p\n", width, height, pDest);
+
 	for (size_t i=0; i<countof(ptrs); ++i) {
 		t.Start();
 		
@@ -119,7 +128,7 @@ int main(int argc, char* argv[])
 		
 		std::string name = sym.GetName(ptrs[i]);
 		
-		printf("%s %p, %f\n", name.c_str(), pDest, sec * 1000.0);
+		printf("%s %f\n", name.c_str(), sec * 1000.0);
 	}
 	
 	_getch();
