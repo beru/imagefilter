@@ -33,8 +33,9 @@ int main(int argc, char* argv[])
 	size_t width = imageInfo.width;
 	size_t height = imageInfo.height;
 	assert(imageInfo.bitsPerSample == 8 && imageInfo.samplesPerPixel == 1);
-	const size_t size = width * height;
 
+	size_t lineSize = (width + 63) & (~63);
+	const size_t size = lineSize * height;
 //	std::vector<unsigned char> in(size);
 //	std::vector<unsigned char> dest(size);
 //	std::vector<unsigned char> work(size);
@@ -44,7 +45,7 @@ int main(int argc, char* argv[])
 	unsigned char* pWork2 = (unsigned char*) _mm_malloc(size*2, 64);
 	
 	unsigned char palettes[256 * 4];
-	ReadImageData(fo, pSrc, width, palettes);
+	ReadImageData(fo, pSrc, lineSize, palettes);
 	fclose(f);
 	
 	for (size_t i=0; i<size; ++i) {
@@ -60,6 +61,7 @@ int main(int argc, char* argv[])
 //	const size_t nThreads = 4;
 #else
 	const size_t nThreads = si.dwNumberOfProcessors;
+//	const size_t nThreads = 1;
 #endif
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
@@ -71,7 +73,7 @@ int main(int argc, char* argv[])
 	pCommon.height = partHeight;
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
-	pCommon.destLineOffsetBytes = width;
+	pCommon.destLineOffsetBytes = lineSize;
 	pCommon.radius = 1;
 	pCommon.iterationCount = 1;
 	std::vector<blur_1b::Parameter> params(nThreads);
@@ -87,15 +89,15 @@ int main(int argc, char* argv[])
 		p.pWork = pWork + i * partSize * 2;
 		p.pWork2 = pWork2 + i * partSize * 2;
 		p.pDest = pDest + i * partSize;
-		p.pTotal = _mm_malloc(width * sizeof(int32_t), 64);
-		p.pModi = _mm_malloc(width * sizeof(int32_t), 64);
+		p.pTotal = _mm_malloc(lineSize * sizeof(int32_t), 64);
+		p.pModi = _mm_malloc(lineSize * sizeof(int32_t), 64);
 	}
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {
 		//blur_1b::test_1,
 		//blur_1b::test_2,
-		blur_1b::test_3,
-		blur_1b::test_4,
+		//blur_1b::test_3,
+		//blur_1b::test_4,
 		blur_1b::test_5_h,
 		blur_1b::test_5_v,
 		blur_1b::test_5_h,
@@ -107,6 +109,7 @@ int main(int argc, char* argv[])
 		blur_1b::test_10,
 		blur_1b::test_11,
 		blur_1b::test_12,
+		blur_1b::test_13,
 
 		//blur_1b::test_21,
 		//blur_1b::test_22,
@@ -115,7 +118,7 @@ int main(int argc, char* argv[])
 	Timer t;
 	Sym sym;
 
-	printf("%d %d %p\n", width, height, pDest);
+	printf("%d %d %d %p\n", width, height, lineSize, pDest);
 
 	for (size_t i=0; i<countof(ptrs); ++i) {
 		t.Start();
