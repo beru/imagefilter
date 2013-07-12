@@ -44,6 +44,7 @@ void test_9(const Parameter& p);		// memory access further optimization
 void test_10(const Parameter& p);		// test_9 SSE optimization
 void test_11(const Parameter& p);		// fused horizontal & vertical computation
 void test_12(const Parameter& p);		// test_11 SSE optimization
+void test_13(const Parameter& p);		// test_11 SSE optimization
 
 // TentFilter
 void test_20(const Parameter& p);		// C implementation

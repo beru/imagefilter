@@ -1866,7 +1866,7 @@ void test_11(const Parameter& p) {
 	}
 
 	// vMiddle
-	for (size_t y=vRad; y<vCount-vRad; ++y) {
+	for (size_t y=vRad; y<vCount-vLen; ++y) {
 
 		const uint8_t* hMinus = hLine;
 		const uint8_t* hPlus = hLine+hLen;
@@ -2069,7 +2069,7 @@ void test_12(const Parameter& p) {
 	__m128i* mvSumLine = (__m128i*)vSumLine;
 
 	// vMiddle
-	for (size_t y=vRad; y<vCount-vRad; ++y) {
+	for (size_t y=vRad; y<vCount-vLen; ++y) {
 
 		assert((ptrdiff_t)hLine % 16 == 0);
 
@@ -2121,7 +2121,149 @@ void test_12(const Parameter& p) {
 
 }
 
+void test_13(const Parameter& p) {
+	
+	BLUR_EXTRACT_PARAMS;
 
+	uint32_t hRad = p.radius;
+	uint32_t vRad = p.radius;
+	uint32_t hLen = 1 + hRad*2;
+	uint32_t vLen = 1 + vRad*2;
+	uint32_t invLen = 0xFFFFFF / (hLen*vLen);
+	uint32_t hCount = p.width;
+	uint32_t vCount = p.height;
+
+	static const __m128i mInvRatio = _mm_set1_epi16(0xFFFF / 9);
+	
+	if (vRad != 1) {
+		return;
+	}
+	
+	const uint8_t* hLine = p.pSrc;
+	uint8_t* vLine = p.pDest;
+	OffsetPtr(vLine, destLineOffsetBytes * vRad);
+
+	uint16_t* vSumLine = (uint16_t*)pWork2;
+	assert((ptrdiff_t)vSumLine % 16 == 0);
+	assert((width * 2) % 16 == 0);
+
+	__m128i* remains = (__m128i*)p.pWork;
+#if 1
+	const __m128i* mpSrc = (const __m128i*)pSrc;
+	__m128i* mpDst = (__m128i*)pDest;
+	for (size_t i=0; i<hCount/64; ++i) {
+		const __m128i* src = mpSrc;
+		__m128i* dst = mpDst;
+		__m128i sums0 = _mm_setzero_si128();
+		__m128i sums1 = _mm_setzero_si128();
+		__m128i sums2 = _mm_setzero_si128();
+		__m128i sums3 = _mm_setzero_si128();
+		__m128i sums4 = _mm_setzero_si128();
+		__m128i sums5 = _mm_setzero_si128();
+		__m128i sums6 = _mm_setzero_si128();
+		__m128i sums7 = _mm_setzero_si128();
+		__m128i adds0 = _mm_setzero_si128();
+		__m128i adds1 = _mm_setzero_si128();
+		__m128i adds2 = _mm_setzero_si128();
+		__m128i adds3 = _mm_setzero_si128();
+		__m128i adds4 = _mm_setzero_si128();
+		__m128i adds5 = _mm_setzero_si128();
+		__m128i adds6 = _mm_setzero_si128();
+		__m128i adds7 = _mm_setzero_si128();
+		__m128i mids0 = _mm_setzero_si128();
+		__m128i mids1 = _mm_setzero_si128();
+		__m128i mids2 = _mm_setzero_si128();
+		__m128i mids3 = _mm_setzero_si128();
+		__m128i mids4 = _mm_setzero_si128();
+		__m128i mids5 = _mm_setzero_si128();
+		__m128i mids6 = _mm_setzero_si128();
+		__m128i mids7 = _mm_setzero_si128();
+		__m128i remain0 = _mm_setzero_si128();
+		__m128i remain1 = _mm_setzero_si128();
+		__m128i remain2 = _mm_setzero_si128();
+		__m128i nsrc0 = src[0];
+		__m128i nsrc1 = src[1];
+		__m128i nsrc2 = src[2];
+		__m128i nsrc3 = src[3];
+		for (size_t y=0; y<vCount; ++y) {
+			sums0 = _mm_sub_epi16(sums0, mids0);
+			sums1 = _mm_sub_epi16(sums1, mids1);
+			sums2 = _mm_sub_epi16(sums2, mids2);
+			sums3 = _mm_sub_epi16(sums3, mids3);
+			sums4 = _mm_sub_epi16(sums4, mids4);
+			sums5 = _mm_sub_epi16(sums5, mids5);
+			sums6 = _mm_sub_epi16(sums6, mids6);
+			sums7 = _mm_sub_epi16(sums7, mids7);
+
+			mids0 = adds0;
+			mids1 = adds1;
+			mids2 = adds2;
+			mids3 = adds3;
+			mids4 = adds4;
+			mids5 = adds5;
+			mids6 = adds6;
+			mids7 = adds7;
+
+			__m128i src0 = nsrc0;
+			__m128i src1 = nsrc1;
+			__m128i src2 = nsrc2;
+			__m128i src3 = nsrc3;
+			nsrc0 = src[4];
+			nsrc1 = src[5];
+			nsrc2 = src[6];
+			nsrc3 = src[7];
+
+			__m128i remain = remains[y];
+			repeatShiftSum3(src0, adds0, adds1, remain0);
+			adds0 = _mm_add_epi16(adds0, remain);
+			repeatShiftSum3(src1, adds2, adds3, remain1);
+			repeatShiftSum3(src2, adds4, adds5, remain2);
+			repeatShiftSum3(src3, adds6, adds7, remain);
+			remains[y] = remain;
+			adds2 = _mm_add_epi16(adds2, remain0);
+			adds4 = _mm_add_epi16(adds4, remain1);
+			adds6 = _mm_add_epi16(adds6, remain2);
+			
+			sums0 = _mm_add_epi16(sums0, adds0);
+			sums1 = _mm_add_epi16(sums1, adds1);
+			sums2 = _mm_add_epi16(sums2, adds2);
+			sums3 = _mm_add_epi16(sums3, adds3);
+			sums4 = _mm_add_epi16(sums4, adds4);
+			sums5 = _mm_add_epi16(sums5, adds5);
+			sums6 = _mm_add_epi16(sums6, adds6);
+			sums7 = _mm_add_epi16(sums7, adds7);
+
+			__m128i result0 = _mm_packus_epi16(_mm_mulhi_epu16(sums0, mInvRatio), _mm_mulhi_epu16(sums1, mInvRatio));
+			_mm_stream_si128(dst+0, result0);
+			__m128i result1 = _mm_packus_epi16(_mm_mulhi_epu16(sums2, mInvRatio), _mm_mulhi_epu16(sums3, mInvRatio));
+			_mm_stream_si128(dst+1, result1);
+			__m128i result2 = _mm_packus_epi16(_mm_mulhi_epu16(sums4, mInvRatio), _mm_mulhi_epu16(sums5, mInvRatio));
+			_mm_stream_si128(dst+2, result2);
+			__m128i result3 = _mm_packus_epi16(_mm_mulhi_epu16(sums6, mInvRatio), _mm_mulhi_epu16(sums7, mInvRatio));
+			_mm_stream_si128(dst+3, result3);
+			OffsetPtr(dst, destLineOffsetBytes);
+			OffsetPtr(src, destLineOffsetBytes);
+		}
+		mpSrc += 4;
+		mpDst += 4;
+	}
+#else
+	const __m128i* mpSrc = (const __m128i*)&pSrc[0];
+	__m128i* mpDst = (__m128i*)&pDest[0];
+	for (size_t y=0; y<vCount; ++y) {
+		for (size_t i=0; i<hCount/64; ++i) {
+			size_t x = i*4;
+			_mm_stream_si128(mpDst+x+0, mpSrc[x+0]);
+			_mm_stream_si128(mpDst+x+1, mpSrc[x+1]);
+			_mm_stream_si128(mpDst+x+2, mpSrc[x+2]);
+			_mm_stream_si128(mpDst+x+3, mpSrc[x+3]);
+		}
+		OffsetPtr(mpDst, destLineOffsetBytes);
+		OffsetPtr(mpSrc, destLineOffsetBytes);
+	}
+#endif
+
+}
 
 void test_20(const Parameter& p) {
 	
