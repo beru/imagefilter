@@ -57,8 +57,8 @@ int main(int argc, char* argv[])
 //	const size_t nThreads = 2;
 //	const size_t nThreads = 4;
 #else
-//	const size_t nThreads = si.dwNumberOfProcessors;
-	const size_t nThreads = 1;
+	const size_t nThreads = si.dwNumberOfProcessors;
+//	const size_t nThreads = 1;
 #endif
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
@@ -106,10 +106,6 @@ int main(int argc, char* argv[])
 		blur_1b::test_10,
 		blur_1b::test_11,
 		blur_1b::test_12,
-		blur_1b::test_13,
-		blur_1b::test_14,
-		blur_1b::test_15,
-		blur_1b::test_16,
 
 		//blur_1b::test_20,
 		//blur_1b::test_21,
