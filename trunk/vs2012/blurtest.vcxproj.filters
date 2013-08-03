@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="ReadImage">
+      <UniqueIdentifier>{51035048-f83a-4096-be75-dd2bb588374e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\ReadImage\File.cpp">
+      <Filter>ReadImage</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ReadImage\ReadImage.cpp">
+      <Filter>ReadImage</Filter>
+    </ClCompile>
+    <ClCompile Include="..\sym.cpp" />
+    <ClCompile Include="..\blur_1b.cpp" />
+    <ClCompile Include="..\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\ReadImage\File.h">
+      <Filter>ReadImage</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ReadImage\IFile.h">
+      <Filter>ReadImage</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ReadImage\ReadImage.h">
+      <Filter>ReadImage</Filter>
+    </ClInclude>
+    <ClInclude Include="..\stdint.h" />
+    <ClInclude Include="..\sym.h" />
+    <ClInclude Include="..\ThreadPool.h" />
+    <ClInclude Include="..\timer.h" />
+    <ClInclude Include="..\blur_1b.h" />
+    <ClInclude Include="..\common.h" />
+    <ClInclude Include="..\RingLinePtr.h" />
+  </ItemGroup>
+</Project>
