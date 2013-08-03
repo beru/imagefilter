@@ -25,7 +25,7 @@
 #include "blur_1b.h"
 #include <algorithm>
 #include <emmintrin.h>
-//#include <smmintrin.h>
+#include <smmintrin.h>
 #if _MSC_VER >= 1700
 #include "immintrin.h"
 #endif
@@ -130,6 +130,7 @@ void memory_copy2(const Parameter& p) {
 }
 
 void memory_copy3(const Parameter& p) {
+#if _MSC_VER >= 1700
 	const size_t cnt = (p.srcLineOffsetBytes * p.height) / 64;
 	const __m256i* src = (const __m256i*) p.pSrc;
 	__m256i* dst = (__m256i*) p.pDest;
@@ -144,6 +145,7 @@ void memory_copy3(const Parameter& p) {
 		src += 2;
 		dst += 2;
 	}
+#endif
 }
 
 void test_1(const Parameter& p) {
