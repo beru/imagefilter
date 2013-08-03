@@ -36,9 +36,6 @@ int main(int argc, char* argv[])
 
 	size_t lineSize = (width + 63) & (~63);
 	const size_t size = lineSize * height;
-//	std::vector<unsigned char> in(size);
-//	std::vector<unsigned char> dest(size);
-//	std::vector<unsigned char> work(size);
 	unsigned char* pSrc = (unsigned char*) _mm_malloc(size, 64);
 	unsigned char* pDest = (unsigned char*) _mm_malloc(size, 64);
 	unsigned char* pWork = (unsigned char*) _mm_malloc(size*2, 64);
@@ -60,8 +57,8 @@ int main(int argc, char* argv[])
 //	const size_t nThreads = 2;
 //	const size_t nThreads = 4;
 #else
-	const size_t nThreads = si.dwNumberOfProcessors;
-//	const size_t nThreads = 1;
+//	const size_t nThreads = si.dwNumberOfProcessors;
+	const size_t nThreads = 1;
 #endif
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
@@ -74,7 +71,7 @@ int main(int argc, char* argv[])
 	pCommon.srcLineOffsetBytes =
 	pCommon.workLineOffsetBytes =
 	pCommon.destLineOffsetBytes = lineSize;
-	pCommon.radius = 1;
+	pCommon.radius = 7;
 	pCommon.iterationCount = 1;
 	std::vector<blur_1b::Parameter> params(nThreads);
 	for (size_t i=0; i<nThreads; ++i) {
@@ -94,10 +91,10 @@ int main(int argc, char* argv[])
 	}
 	typedef void (*BlurFuncPtr)(const blur_1b::Parameter& p);
 	BlurFuncPtr ptrs[] = {
-		//blur_1b::test_1,
-		//blur_1b::test_2,
-		//blur_1b::test_3,
-		//blur_1b::test_4,
+		blur_1b::test_1,
+		blur_1b::test_2,
+		blur_1b::test_3,
+		blur_1b::test_4,
 		blur_1b::test_5_h,
 		blur_1b::test_5_v,
 		blur_1b::test_5_h,
@@ -110,9 +107,15 @@ int main(int argc, char* argv[])
 		blur_1b::test_11,
 		blur_1b::test_12,
 		blur_1b::test_13,
+		blur_1b::test_14,
+		blur_1b::test_15,
+		blur_1b::test_16,
 
+		//blur_1b::test_20,
 		//blur_1b::test_21,
-		//blur_1b::test_22,
+		//blur_1b::memory_copy1,
+		//blur_1b::memory_copy2,
+		//blur_1b::memory_copy3,
 	};
 	
 	Timer t;

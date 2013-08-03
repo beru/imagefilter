@@ -30,6 +30,10 @@ struct Parameter {
 };
 
 // BoxFilter
+void memory_copy1(const Parameter& p);
+void memory_copy2(const Parameter& p);
+void memory_copy3(const Parameter& p);
+
 void test_1(const Parameter& p);		// 1 pass naive implementation
 void test_2(const Parameter& p);		// 1 pass naive implementation pointer optimization
 void test_3(const Parameter& p);		// 2 pass optimization (horizontal -> vertical)
@@ -42,9 +46,12 @@ void test_7_v(const Parameter& p);		// test_6 SSE optimization
 void test_8(const Parameter& p);		// memory access optimization
 void test_9(const Parameter& p);		// memory access further optimization
 void test_10(const Parameter& p);		// test_9 SSE optimization
-void test_11(const Parameter& p);		// fused horizontal & vertical computation
-void test_12(const Parameter& p);		// test_11 SSE optimization
-void test_13(const Parameter& p);		// test_11 SSE optimization
+void test_11(const Parameter& p);		// fused horizontal & vertical
+void test_12(const Parameter& p);		// fused horizontal to vertical SSE2
+void test_13(const Parameter& p);		// fused vertical to horizontal SSE2
+void test_14(const Parameter& p);		// fused vertical to horizontal AVX2
+void test_15(const Parameter& p);		// horizontal SSSE3
+void test_16(const Parameter& p);		// horizontal vertical SSSE3
 
 // TentFilter
 void test_20(const Parameter& p);		// C implementation
