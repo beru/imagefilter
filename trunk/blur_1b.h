@@ -47,11 +47,7 @@ void test_8(const Parameter& p);		// memory access optimization
 void test_9(const Parameter& p);		// memory access further optimization
 void test_10(const Parameter& p);		// test_9 SSE optimization
 void test_11(const Parameter& p);		// fused horizontal & vertical
-void test_12(const Parameter& p);		// fused horizontal to vertical SSE2
-void test_13(const Parameter& p);		// fused vertical to horizontal SSE2
-void test_14(const Parameter& p);		// fused vertical to horizontal AVX2
-void test_15(const Parameter& p);		// horizontal SSSE3
-void test_16(const Parameter& p);		// horizontal vertical SSSE3
+void test_12(const Parameter& p);		// test_11 SSE3 optimization
 
 // TentFilter
 void test_20(const Parameter& p);		// C implementation
