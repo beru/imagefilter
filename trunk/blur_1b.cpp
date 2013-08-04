@@ -1966,6 +1966,7 @@ struct HProcessor {
 	size_t len;
 
 	size_t vcnt;
+	size_t remainCount;
 	const __m128i* src;
 	__m128i* pSumLine;
 	__m128i* pSubLine;
@@ -1989,12 +1990,10 @@ struct HProcessor {
 		diff1 = shiftAdd16(diff1);
 		sum1 = _mm_add_epi16(sum1, diff1);
 	}
-	
-	
-	template <typename T>
-	__forceinline
-	void process(T& storer) {
 
+	__forceinline
+	void getPlusMinus(__m128i& plus, __m128i& minus, __m128i& sum3, const __m128i*& plusSrc, const __m128i*& minusSrc)
+	{
 		// îΩì]ÇµÇƒóvëfÇê∂ê¨
 		__m128i minusSrc2[2];
 		minusSrc2[0] = _mm_shuffle_epi8(src[0], REVERSE);	// 15-1
@@ -2003,15 +2002,28 @@ struct HProcessor {
 		for (size_t i=0; i<1+len*2; ++i) {
 			sum += ((const uint8_t*)(minusSrc2+1)) [i - (len+1)];
 		}
-		__m128i sum3 = _mm_set1_epi16(sum);
-		const __m128i* plusSrc = (const __m128i*) ((const uint8_t*)src + len);
-		const __m128i* minusSrc = (const __m128i*) ((const uint8_t*)src - (len+1));
-		__m128i plus = _mm_loadu_si128(plusSrc);
-		__m128i minus = _mm_loadu_si128(
+		sum3.m128i_u16[7] = sum;
+		plusSrc = (const __m128i*) ((const uint8_t*)src + len);
+		minusSrc = (const __m128i*) ((const uint8_t*)src - (len+1));
+		plus = _mm_loadu_si128(plusSrc);
+		minus = _mm_loadu_si128(
 			(const __m128i*) (
 				(const uint8_t*)(minusSrc2+1) - (len+1)
 			)
 		);
+	}
+	
+	template <typename T>
+	__forceinline
+	void process(T& storer) {
+
+		const __m128i* plusSrc = 0;
+		const __m128i* minusSrc = 0;
+		__m128i plus;
+		__m128i minus;
+		__m128i sum3;
+		getPlusMinus(plus, minus, sum3, plusSrc, minusSrc);
+
 		for (size_t i=0; i<vcnt; ++i) {
 			__m128i nextPlus = _mm_loadu_si128(plusSrc+i*2+1);
 			__m128i nextMinus = _mm_loadu_si128(minusSrc+i*2+1);
@@ -2062,27 +2074,73 @@ struct HProcessor {
 			plus = nextPlus;
 			minus = nextMinus;
 		}
+
+		{
+			const size_t index = vcnt * 4;
+			__m128i vsum0 = pSumLine[index+0];
+			__m128i vsum1 = pSumLine[index+1];
+			__m128i vsum2 = pSumLine[index+2];
+			__m128i vsum3 = pSumLine[index+3];
+
+			__m128i vminus0 = pSubLine[index+0];
+			__m128i vminus1 = pSubLine[index+1];
+			__m128i vminus2 = pSubLine[index+2];
+			__m128i vminus3 = pSubLine[index+3];
+			
+			storer(vsum0, vsum1, vsum2, vsum3);
+			const uint8_t* plusSrc2 = (const uint8_t*) (plusSrc + vcnt * 2);
+			const uint8_t* minusSrc2 = (const uint8_t*) (minusSrc + vcnt * 2);
+			uint16_t sum = sum3.m128i_u16[7];
+			union {
+				uint16_t shorts[32];
+				struct {
+					__m128i v0;
+					__m128i v1;
+					__m128i v2;
+					__m128i v3;
+				} str;
+			} uni;
+			size_t i;
+			for (i=0; i<remainCount-len; ++i) {
+				sum += plusSrc2[i];
+				sum -= minusSrc2[i];
+				uni.shorts[i] = sum;
+			}
+			for (size_t i2=0; i2<len; ++i2) {
+				sum += plusSrc2[i-2-i2];
+				sum -= minusSrc2[i+i2];
+				uni.shorts[i+i2] = sum;
+			}
+			vsum0 = _mm_sub_epi16(vsum0, vminus0);
+			vsum1 = _mm_sub_epi16(vsum1, vminus1);
+			vsum2 = _mm_sub_epi16(vsum2, vminus2);
+			vsum3 = _mm_sub_epi16(vsum3, vminus3);
+			vsum0 = _mm_add_epi16(vsum0, uni.str.v0);
+			vsum1 = _mm_add_epi16(vsum1, uni.str.v1);
+			vsum2 = _mm_add_epi16(vsum2, uni.str.v2);
+			vsum3 = _mm_add_epi16(vsum3, uni.str.v3);
+
+			pAddLine[index+0] = uni.str.v0;
+			pAddLine[index+1] = uni.str.v1;
+			pAddLine[index+2] = uni.str.v2;
+			pAddLine[index+3] = uni.str.v3;
+
+			pSumLine[index+0] = vsum0;
+			pSumLine[index+1] = vsum1;
+			pSumLine[index+2] = vsum2;
+			pSumLine[index+3] = vsum3;
+		}
+
 	}
 
 	__forceinline
 	void process2() {
-		// îΩì]ÇµÇƒóvëfÇê∂ê¨
-		__m128i minusSrc2[2];
-		minusSrc2[0] = _mm_shuffle_epi8(src[0], REVERSE);	// 15-1
-		minusSrc2[1] = src[0];
-		uint16_t sum = 0;
-		for (size_t i=0; i<1+len*2; ++i) {
-			sum += ((const uint8_t*)(minusSrc2+1)) [i - (len+1)];
-		}
-		__m128i sum3 = _mm_set1_epi16(sum);
-		const __m128i* plusSrc = (const __m128i*) ((const uint8_t*)src + len);
-		const __m128i* minusSrc = (const __m128i*) ((const uint8_t*)src - (len+1));
-		__m128i plus = _mm_loadu_si128(plusSrc);
-		__m128i minus = _mm_loadu_si128(
-			(const __m128i*) (
-				(const uint8_t*)(minusSrc2+1) - (len+1)
-			)
-		);
+		const __m128i* plusSrc = 0;
+		const __m128i* minusSrc = 0;
+		__m128i plus;
+		__m128i minus;
+		__m128i sum3;
+		getPlusMinus(plus, minus, sum3, plusSrc, minusSrc);
 		for (size_t i=0; i<vcnt; ++i) {
 			__m128i nextPlus = _mm_loadu_si128(plusSrc+i*2+1);
 			__m128i nextMinus = _mm_loadu_si128(minusSrc+i*2+1);
@@ -2126,27 +2184,35 @@ struct HProcessor {
 			plus = nextPlus;
 			minus = nextMinus;
 		}
+
+		const uint8_t* plusSrc2 = (const uint8_t*) (plusSrc + vcnt * 2);
+		const uint8_t* minusSrc2 = (const uint8_t*) (minusSrc + vcnt * 2);
+		uint16_t* pAddLine2 = (uint16_t*) (pAddLine + vcnt * 4);
+		uint16_t* pSumLine2 = (uint16_t*) (pSumLine + vcnt * 4);
+		uint16_t sum = sum3.m128i_u16[7];
+		size_t i;
+		for (i=0; i<remainCount-len; ++i) {
+			sum += plusSrc2[i];
+			sum -= minusSrc2[i];
+			pAddLine2[i] = sum;
+			pSumLine2[i] += sum * 2;
+		}
+		for (size_t i2=0; i2<len; ++i2) {
+			sum += plusSrc2[i-2-i2];
+			sum -= minusSrc2[i+i2];
+			pAddLine2[i+i2] = sum;
+			pSumLine2[i+i2] += sum * 2;
+		}
 	}
 
 	__forceinline
 	void process3() {
-		// îΩì]ÇµÇƒóvëfÇê∂ê¨
-		__m128i minusSrc2[2];
-		minusSrc2[0] = _mm_shuffle_epi8(src[0], REVERSE);	// 15-1
-		minusSrc2[1] = src[0];
-		uint16_t sum = 0;
-		for (size_t i=0; i<1+len*2; ++i) {
-			sum += ((const uint8_t*)(minusSrc2+1)) [i - (len+1)];
-		}
-		__m128i sum3 = _mm_set1_epi16(sum);
-		const __m128i* plusSrc = (const __m128i*) ((const uint8_t*)src + len);
-		const __m128i* minusSrc = (const __m128i*) ((const uint8_t*)src - (len+1));
-		__m128i plus = _mm_loadu_si128(plusSrc);
-		__m128i minus = _mm_loadu_si128(
-			(const __m128i*) (
-				(const uint8_t*)(minusSrc2+1) - (len+1)
-			)
-		);
+		const __m128i* plusSrc = 0;
+		const __m128i* minusSrc = 0;
+		__m128i plus;
+		__m128i minus;
+		__m128i sum3;
+		getPlusMinus(plus, minus, sum3, plusSrc, minusSrc);
 		for (size_t i=0; i<vcnt; ++i) {
 			__m128i nextPlus = _mm_loadu_si128(plusSrc+i*2+1);
 			__m128i nextMinus = _mm_loadu_si128(minusSrc+i*2+1);
@@ -2176,6 +2242,64 @@ struct HProcessor {
 			plus = nextPlus;
 			minus = nextMinus;
 		}
+
+		const uint8_t* plusSrc2 = (const uint8_t*) (plusSrc + vcnt * 2);
+		const uint8_t* minusSrc2 = (const uint8_t*) (minusSrc + vcnt * 2);
+		uint16_t* pAddLine2 = (uint16_t*) (pAddLine + vcnt * 4);
+		uint16_t* pSumLine2 = (uint16_t*) (pSumLine + vcnt * 4);
+		uint16_t sum = sum3.m128i_u16[7];
+		size_t i;
+		for (i=0; i<remainCount-len; ++i) {
+			sum += plusSrc2[i];
+			sum -= minusSrc2[i];
+			pAddLine2[i] = sum;
+			pSumLine2[i] = sum;
+		}
+		for (size_t i2=0; i2<len; ++i2) {
+			sum += plusSrc2[i-2-i2];
+			sum -= minusSrc2[i+i2];
+			pAddLine2[i+i2] = sum;
+			pSumLine2[i+i2] = sum;
+		}
+	}
+
+	template <typename T>
+	__forceinline
+	void process4(T& storer) {
+
+		for (size_t i=0; i<vcnt+1; ++i) {
+			__m128i vsum0 = pSumLine[i*4+0];
+			__m128i vsum1 = pSumLine[i*4+1];
+			__m128i vsum2 = pSumLine[i*4+2];
+			__m128i vsum3 = pSumLine[i*4+3];
+
+			__m128i vminus0 = pSubLine[i*4+0];
+			__m128i vminus1 = pSubLine[i*4+1];
+			__m128i vminus2 = pSubLine[i*4+2];
+			__m128i vminus3 = pSubLine[i*4+3];
+
+			__m128i vplus0 = pAddLine[i*4+0];
+			__m128i vplus1 = pAddLine[i*4+1];
+			__m128i vplus2 = pAddLine[i*4+2];
+			__m128i vplus3 = pAddLine[i*4+3];
+			
+			storer(vsum0, vsum1, vsum2, vsum3);
+
+			vsum0 = _mm_sub_epi16(vsum0, vminus0);
+			vsum1 = _mm_sub_epi16(vsum1, vminus1);
+			vsum2 = _mm_sub_epi16(vsum2, vminus2);
+			vsum3 = _mm_sub_epi16(vsum3, vminus3);
+			vsum0 = _mm_add_epi16(vsum0, vplus0);
+			vsum1 = _mm_add_epi16(vsum1, vplus1);
+			vsum2 = _mm_add_epi16(vsum2, vplus2);
+			vsum3 = _mm_add_epi16(vsum3, vplus3);
+
+			pSumLine[i*4+0] = vsum0;
+			pSumLine[i*4+1] = vsum1;
+			pSumLine[i*4+2] = vsum2;
+			pSumLine[i*4+3] = vsum3;
+			
+		}
 	}
 };
 
@@ -2188,7 +2312,8 @@ void test_12(const Parameter& p) {
 	if (len > 14 || len == 0) {
 		return;
 	}
-	size_t vcnt = width / 32;
+	size_t vcnt = (width - len) / 32;
+	size_t remainCount = width - 32 * vcnt;
 	if (vcnt == 0) {
 		return;
 	}
@@ -2205,6 +2330,7 @@ void test_12(const Parameter& p) {
 	HProcessor hProc;
 	hProc.len = p.radius;
 	hProc.vcnt = vcnt;
+	hProc.remainCount = remainCount;
 	hProc.pSumLine = pSumLine;
 	memset(pSumLine, 0, p.srcLineOffsetBytes*2);
 	hProc.pSubLine = pSubLine;
@@ -2212,21 +2338,23 @@ void test_12(const Parameter& p) {
 
 	struct Storer
 	{
-		__m128i invLen;
+		uint16_t invLen;
+		__m128i mInvLen;
 		__m128i* dst;
 
 		__forceinline
 		void operator () (__m128i& vsum0, __m128i& vsum1, __m128i& vsum2, __m128i& vsum3)
 		{
-			__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(vsum0, invLen), _mm_mulhi_epu16(vsum1, invLen));
-			__m128i store1 = _mm_packus_epi16(_mm_mulhi_epu16(vsum2, invLen), _mm_mulhi_epu16(vsum3, invLen));
+			__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(vsum0, mInvLen), _mm_mulhi_epu16(vsum1, mInvLen));
+			__m128i store1 = _mm_packus_epi16(_mm_mulhi_epu16(vsum2, mInvLen), _mm_mulhi_epu16(vsum3, mInvLen));
 			_mm_stream_si128(dst+0, store0);
 			_mm_stream_si128(dst+1, store1);
 			dst += 2;
 		}
 	} storer;
 	const size_t diameter = 1 + len * 2;
-	storer.invLen = _mm_set1_epi16(0xFFFF / (diameter*diameter));
+	storer.invLen = 0xFFFF / (diameter*diameter);
+	storer.mInvLen = _mm_set1_epi16(storer.invLen);
 
 	hProc.src = src;
 	// collect sum (0 to len)
@@ -2266,7 +2394,16 @@ void test_12(const Parameter& p) {
 		OffsetPtr(dst, p.destLineOffsetBytes);
 		storer.dst = dst;
 	}
-
+	// remain set
+	pSubLine.movePrev();
+	pSubLine.movePrev();
+	for (size_t i=0; i<=len; ++i) {
+		hProc.process4(storer);
+		pSubLine.movePrev();
+		hProc.pSubLine = pSubLine;
+		OffsetPtr(dst, p.destLineOffsetBytes);
+		storer.dst = dst;
+	}
 }
 
 void test_20(const Parameter& p) {
