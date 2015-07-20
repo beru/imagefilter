@@ -1949,10 +1949,13 @@ __m128i shiftAdd16(__m128i v)
 	v = _mm_add_epi16(v, _mm_slli_si128(v, 2));
 	v = _mm_add_epi16(v, _mm_slli_si128(v, 4));
 	v = _mm_add_epi16(v, _mm_slli_si128(v, 8));
-#else
-
 #endif
 	return v;
+}
+
+__forceinline
+__m256i shiftAdd16(__m256i v)
+{
 }
 
 static const __m128i REVERSE = _mm_setr_epi8(-1,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1);
@@ -1973,8 +1976,15 @@ struct HProcessor {
 	__m128i* pAddLine;
 	
 	__forceinline
-	void calcShiftSum(__m128i& prevSum, __m128i& plus, __m128i& minus, __m128i& sum0, __m128i& sum1)
+	void calcShiftSum(__m128i prevSum, __m128i plus, __m128i minus, __m128i& sum0, __m128i& sum1)
 	{
+#if 1
+		static const __m128i VMUL = { +1, -1, +1, -1, +1, -1, +1, -1, +1, -1, +1, -1, +1, -1, +1, -1,  };
+		__m128i src0 = _mm_unpacklo_epi8(plus, minus);
+		__m128i src1 = _mm_unpackhi_epi8(plus, minus);
+		__m128i diff0 = _mm_maddubs_epi16(src0, VMUL);
+		__m128i diff1 = _mm_maddubs_epi16(src1, VMUL);
+#else
 		__m128i plus0 = _mm_unpacklo_epi8(plus, _mm_setzero_si128());
 		__m128i minus0 = _mm_unpacklo_epi8(minus, _mm_setzero_si128());
 		__m128i diff0 = _mm_sub_epi16(plus0, minus0);
@@ -1982,12 +1992,12 @@ struct HProcessor {
 		__m128i plus1 = _mm_unpackhi_epi8(plus, _mm_setzero_si128());
 		__m128i minus1 = _mm_unpackhi_epi8(minus, _mm_setzero_si128());
 		__m128i diff1 = _mm_sub_epi16(plus1, minus1);
-		
+#endif
 		sum0 = _mm_shuffle_epi8(prevSum, MASK7);
 		diff0 = shiftAdd16(diff0);
+		diff1 = shiftAdd16(diff1);
 		sum0 = _mm_add_epi16(sum0, diff0);
 		sum1 = _mm_shuffle_epi8(sum0, MASK7);
-		diff1 = shiftAdd16(diff1);
 		sum1 = _mm_add_epi16(sum1, diff1);
 	}
 
@@ -1995,9 +2005,10 @@ struct HProcessor {
 	void getPlusMinus(__m128i& plus, __m128i& minus, __m128i& sum3, const __m128i*& plusSrc, const __m128i*& minusSrc)
 	{
 		// 反転して要素を生成
+		__m128i src0 = src[0];
 		__m128i minusSrc2[2];
-		minusSrc2[0] = _mm_shuffle_epi8(src[0], REVERSE);	// 15-1
-		minusSrc2[1] = src[0];
+		minusSrc2[0] = _mm_shuffle_epi8(src0, REVERSE);	// 15-1
+		minusSrc2[1] = src0;
 		uint16_t sum = 0;
 		for (size_t i=0; i<1+len*2; ++i) {
 			sum += ((const uint8_t*)(minusSrc2+1)) [i - (len+1)];
@@ -2052,6 +2063,11 @@ struct HProcessor {
 
 			storer(vsum0, vsum1, vsum2, vsum3);
 
+			pAddLine[i*4+0] = sum0;
+			pAddLine[i*4+1] = sum1;
+			pAddLine[i*4+2] = sum2;
+			pAddLine[i*4+3] = sum3;
+
 			vsum0 = _mm_sub_epi16(vsum0, vminus0);
 			vsum1 = _mm_sub_epi16(vsum1, vminus1);
 			vsum2 = _mm_sub_epi16(vsum2, vminus2);
@@ -2060,11 +2076,6 @@ struct HProcessor {
 			vsum1 = _mm_add_epi16(vsum1, sum1);
 			vsum2 = _mm_add_epi16(vsum2, sum2);
 			vsum3 = _mm_add_epi16(vsum3, sum3);
-
-			pAddLine[i*4+0] = sum0;
-			pAddLine[i*4+1] = sum1;
-			pAddLine[i*4+2] = sum2;
-			pAddLine[i*4+3] = sum3;
 
 			pSumLine[i*4+0] = vsum0;
 			pSumLine[i*4+1] = vsum1;
@@ -2403,6 +2414,178 @@ void test_12(const Parameter& p) {
 		hProc.pSubLine = pSubLine;
 		OffsetPtr(dst, p.destLineOffsetBytes);
 		storer.dst = dst;
+	}
+}
+
+void test_13(const Parameter& p) {
+	const uint8_t* src = (const uint8_t*) p.pSrc;
+	const size_t nBlocks = (p.width + 255) /  256;
+	const ptrdiff_t sumBytes = (nBlocks * 2 + 15) & (~15);
+	const ptrdiff_t dstLineBytes = sumBytes + p.srcLineOffsetBytes * 2;
+	uint16_t* pSum = (uint16_t*) p.pWork;
+	uint16_t* pTable = (uint16_t*) ((char*)p.pWork + sumBytes);
+	for (uint16_t y=0; y<p.height; ++y) {
+		for (size_t i=0; i<nBlocks; ++i) {
+			uint32_t sum = 0;
+			const size_t count = (i == nBlocks-1) ? (p.width - 256 * i) : 256;
+			for (size_t j=0; j<count; ++j) {
+				sum += src[i*256+j];
+				pTable[i*256+j] = sum;
+			}
+			pSum[i] = sum;
+		}
+		OffsetPtr(src, p.srcLineOffsetBytes);
+		OffsetPtr(pSum, dstLineBytes);
+		OffsetPtr(pTable, dstLineBytes);
+	}
+}
+
+void test_14(const Parameter& p) {
+	const size_t nBlocks = (p.width + 255) /  256;
+	const ptrdiff_t sumBytes = (nBlocks * 2 + 15) & (~15);
+	const ptrdiff_t srcLineBytes = sumBytes + p.srcLineOffsetBytes * 2;
+	const uint16_t* pSum = (const uint16_t*) p.pWork;
+	const uint16_t* pTable = (const uint16_t*) ((const char*)p.pWork + sumBytes);
+
+	uint8_t* dst = (uint8_t*) p.pDest;
+	const size_t dist = p.radius*2+1;
+	const uint32_t invDiv = 0xFFFF / (1+2*p.radius);
+	for (size_t y=0; y<p.height; ++y) {
+		size_t j = dist;
+		size_t sum = 0;
+		for (size_t bi=0; bi<nBlocks; ++bi) {
+			for (size_t mend=j+p.radius*2; j<=mend; ++j) {
+				uint32_t back = pTable[j-dist];
+				uint32_t front = sum + pTable[j];
+				uint16_t result = ((front - back) * invDiv) >> 16;
+				dst[j-p.radius] = result;
+			}
+			size_t end = std::min((size_t)p.width, (1+bi)*256);
+			for (; j<end; ++j) {
+				uint32_t back = pTable[j-dist];
+				uint32_t front = pTable[j];
+				uint16_t result = ((front - back) * invDiv) >> 16;
+				dst[j-p.radius] = result;
+			}
+			sum = pSum[bi];
+		}
+		OffsetPtr(pSum, srcLineBytes);
+		OffsetPtr(pTable, srcLineBytes);
+		OffsetPtr(dst, p.destLineOffsetBytes);
+
+	}
+}
+
+void test_15(const Parameter& p) {
+	const size_t nBlocks = (p.width + 255) /  256;
+	const ptrdiff_t sumBytes = (nBlocks * 2 + 15) & (~15);
+	const ptrdiff_t srcLineBytes = sumBytes + p.srcLineOffsetBytes * 2;
+	const uint16_t* pSum = (const uint16_t*) p.pWork;
+	const size_t dist = p.radius*2+1;
+	const __m128i* pTable = (const __m128i*) ((const char*)p.pWork + sumBytes);
+	const __m128i* pLeft = pTable;
+	const __m128i* pRight = (const __m128i*) ((const char*)pTable + dist*2);
+	//const size_t n16 = (p.width + 15) / 16;
+
+	const size_t fillCount = p.radius / 8;
+	const size_t noBorderCount16 = 15 - fillCount;
+	const bool plfr = (p.radius & 4) != 0;
+	static const __m128i SHUFFLE_MASKS[4] = {
+		{ -1,-1, -1,-1, -1,-1, -1,-1, -1,-1, -1,-1, -1,-1, +0,+1, },
+		{ -1,-1, -1,-1, -1,-1, -1,-1, -1,-1, +0,+1, +0,+1, +0,+1, },
+		{ -1,-1, -1,-1, -1,-1, +0,+1, +0,+1, +0,+1, +0,+1, +0,+1, },
+		{ -1,-1, +0,+1, +0,+1, +0,+1, +0,+1, +0,+1, +0,+1, +0,+1, },
+	};
+	const __m128i shuffleMask = SHUFFLE_MASKS[p.radius & 3];
+
+	__m128i* pDst = (__m128i*) p.pDest;
+	const uint32_t invDiv = 0xFFFF / (1+2*p.radius);
+	const __m128i vInvDiv = _mm_set1_epi16(invDiv);
+	for (size_t y=0; y<p.height; ++y) {
+		//for (size_t i=0; i<n16; ++i) {
+		//	__m128i left0 = pLeft[i*2+0];
+		//	__m128i left1 = pLeft[i*2+1];
+		//	__m128i right0 = _mm_loadu_si128(pRight+i*2+0);
+		//	__m128i right1 = _mm_loadu_si128(pRight+i*2+1);
+		//	__m128i diff0 = _mm_sub_epi16(right0, left0);
+		//	__m128i diff1 = _mm_sub_epi16(right1, left1);
+		//	__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(diff0, vInvDiv), _mm_mulhi_epu16(diff1, vInvDiv));
+		//	_mm_stream_si128(pDst+i, store0);
+		//}
+
+		// 右側のピクセル配列とが境界線を跨ぐ場合
+		// 右側のピクセル配列の一部に加算
+
+		// 右側のピクセル配列と左側のピクセル配列が境界線を跨ぐ場合
+		// 右側のピクセル配列の全体に加算
+
+		// 256
+		// 1 + radius / 4
+
+		// first right part, partially strides
+		// rest of right datas passed a border
+
+		size_t idx = 0;
+		for (size_t i=0; i<nBlocks-1; ++i) {
+			for (size_t j=0; j<noBorderCount16; ++j) {
+				__m128i left0 = pLeft[idx*2+0];
+				__m128i left1 = pLeft[idx*2+1];
+				__m128i right0 = _mm_loadu_si128(pRight+idx*2+0);
+				__m128i right1 = _mm_loadu_si128(pRight+idx*2+1);
+				__m128i diff0 = _mm_sub_epi16(right0, left0);
+				__m128i diff1 = _mm_sub_epi16(right1, left1);
+				__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(diff0, vInvDiv), _mm_mulhi_epu16(diff1, vInvDiv));
+				_mm_stream_si128(pDst+idx, store0);
+				++idx;
+			}
+			__m128i sum = _mm_set1_epi16(pSum[i]);
+			{
+				__m128i sumShuffled = _mm_shuffle_epi8(sum, shuffleMask);
+				__m128i left0 = pLeft[idx*2+0];
+				__m128i left1 = pLeft[idx*2+1];
+				__m128i right0 = _mm_loadu_si128(pRight+idx*2+0);
+				__m128i right1 = _mm_loadu_si128(pRight+idx*2+1);
+				if (!plfr) {
+				// 8 8 の右側の一部が跨ぐ場合（左側は跨がない）
+					right1 = _mm_add_epi16(right1, sumShuffled);
+				}else {
+				// 8 8 の左側の一部が跨ぐ場合（右側は全て跨いでいる）
+					right0 = _mm_add_epi16(right0, sumShuffled);
+					right1 = _mm_add_epi16(right1, sum);
+				}
+				__m128i diff0 = _mm_sub_epi16(right0, left0);
+				__m128i diff1 = _mm_sub_epi16(right1, left1);
+				__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(diff0, vInvDiv), _mm_mulhi_epu16(diff1, vInvDiv));
+				_mm_stream_si128(pDst+idx, store0);
+				++idx;
+			}
+
+			// 8 8 の両方が全て跨ぐ場合
+			for (size_t j=0; j<fillCount; ++j) {
+				__m128i left0 = pLeft[idx*2+0];
+				__m128i left1 = pLeft[idx*2+1];
+				__m128i right0 = _mm_loadu_si128(pRight+idx*2+0);
+				__m128i right1 = _mm_loadu_si128(pRight+idx*2+1);
+				right0 = _mm_add_epi16(right0, sum);
+				right1 = _mm_add_epi16(right1, sum);
+				__m128i diff0 = _mm_sub_epi16(right0, left0);
+				__m128i diff1 = _mm_sub_epi16(right1, left1);
+				__m128i store0 = _mm_packus_epi16(_mm_mulhi_epu16(diff0, vInvDiv), _mm_mulhi_epu16(diff1, vInvDiv));
+				_mm_stream_si128(pDst+idx, store0);
+				++idx;
+			}
+
+		}
+
+
+
+
+
+
+		OffsetPtr(pSum, srcLineBytes);
+		OffsetPtr(pLeft, srcLineBytes);
+		OffsetPtr(pRight, srcLineBytes);
+		OffsetPtr(pDst, p.destLineOffsetBytes);
 	}
 }
 
