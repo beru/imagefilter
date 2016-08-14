@@ -26,7 +26,6 @@
     <ClInclude Include="..\ReadImage\ReadImage.h">
       <Filter>ReadImage</Filter>
     </ClInclude>
-    <ClInclude Include="..\stdint.h" />
     <ClInclude Include="..\sym.h" />
     <ClInclude Include="..\ThreadPool.h" />
     <ClInclude Include="..\timer.h" />

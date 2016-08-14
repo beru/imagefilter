@@ -110,12 +110,12 @@ int main(int argc, char* argv[])
 		blur_1b::test_14,
 		blur_1b::test_15,
 
-		//blur_1b::test_20,
-		//blur_1b::test_21,
+		blur_1b::test_20,
+		blur_1b::test_21,
 
-		//blur_1b::memory_copy1,
-		//blur_1b::memory_copy2,
-		//blur_1b::memory_copy3,
+		blur_1b::memory_copy1,
+		blur_1b::memory_copy2,
+		blur_1b::memory_copy3,
 	};
 	
 	Timer t;
