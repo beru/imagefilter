@@ -14,52 +14,18 @@
 #include <conio.h>
 #include "sym.h"
 
-int main(int argc, char* argv[])
+void blur_test(
+    size_t nThreads,
+    size_t width,
+    size_t height,
+    size_t lineSize,
+    size_t size,
+    const uint8_t* pSrc,
+    uint8_t* pWork,
+    uint8_t* pWork2,
+    uint8_t* pDest
+    )
 {
-	if (argc < 2) {
-		printf("specify filename\n");
-		return 1;
-	}
-	
-	FILE* f = fopen(argv[1], "rb");
-	if (!f) {
-		printf("failed to open file : %s\n", argv[1]);
-		return 1;
-	}
-	File fo(f);
-	ImageInfo imageInfo;
-	ReadImageInfo(fo, imageInfo);
-	
-	size_t width = imageInfo.width;
-	size_t height = imageInfo.height;
-	assert(imageInfo.bitsPerSample == 8 && imageInfo.samplesPerPixel == 1);
-
-	size_t lineSize = (width + 63) & (~63);
-	const size_t size = lineSize * height;
-	unsigned char* pSrc = (unsigned char*) _mm_malloc(size, 64);
-	unsigned char* pDest = (unsigned char*) _mm_malloc(size, 64);
-	unsigned char* pWork = (unsigned char*) _mm_malloc(size*4, 64);
-	unsigned char* pWork2 = (unsigned char*) _mm_malloc(size*4, 64);
-	
-	unsigned char palettes[256 * 4];
-	ReadImageData(fo, pSrc, lineSize, palettes);
-	fclose(f);
-	
-	for (size_t i=0; i<size; ++i) {
-		pSrc[i] = palettes[4 * pSrc[i]];
-	}
-	
-	SYSTEM_INFO si;
-	GetSystemInfo(&si);
-	
-#ifdef _DEBUG
-	const size_t nThreads = 1;
-//	const size_t nThreads = 2;
-//	const size_t nThreads = 4;
-#else
-	const size_t nThreads = si.dwNumberOfProcessors;
-//	const size_t nThreads = 1;
-#endif
 	Threads<blur_1b::Parameter> threads;
 	threads.SetUp(nThreads);
 	const size_t partSize = size / nThreads;
@@ -121,8 +87,6 @@ int main(int argc, char* argv[])
 	Timer t;
 	Sym sym;
 
-	printf("%d %d %d %p\n", width, height, lineSize, pDest);
-
 	for (size_t i=0; i<countof(ptrs); ++i) {
 		t.Start();
 		
@@ -136,7 +100,130 @@ int main(int argc, char* argv[])
 		
 		printf("%s %f\n", name.c_str(), sec * 1000.0);
 	}
+
+}
+
+void gamma_correction_test(
+    size_t nThreads,
+    size_t width,
+    size_t height,
+    size_t lineSize,
+    size_t size,
+    const uint8_t* pSrc,
+    uint8_t* pWork,
+    uint8_t* pWork2,
+    uint8_t* pDest
+    )
+{
+    double displayGamma = 2.2;
+    uint8_t table0[256];
+    uint8_t table1[256];
+    for (size_t i=0; i<256; ++i) {
+        double di = (double)i / 255.0;
+        table0[i] = std::pow(di, 1.0/displayGamma) * 255.0 + 0.5;
+        table1[i] = std::pow(di, displayGamma) * 255.0 + 0.5;
+    }
+
+    const uint8_t* pSrcLine = pSrc;
+    uint8_t* pDstLine = pDest;
+    for (size_t y=0; y<height/2; ++y) {
+        const uint8_t* pSrcLine2 = pSrcLine + lineSize;
+        for (size_t x=0; x<width/2; ++x) {
+            uint8_t s0 = pSrcLine[x*2];
+            uint8_t s1 = pSrcLine[x*2+1];
+            uint8_t s2 = pSrcLine2[x*2];
+            uint8_t s3 = pSrcLine2[x*2+1];
+#if 0
+            int sum = table1[s0] + table1[s1] + table1[s2] + table1[s3];
+            pDstLine[x] = table0[sum >> 2];
+#else
+            int sum = s0 + s1 + s2 + s3;
+            pDstLine[x] = sum >> 2;
+#endif
+        }
+        pSrcLine += lineSize * 2;
+        pDstLine += lineSize;
+    }
+
+
+    int hoge = 0;
+}
+
+int main(int argc, char* argv[])
+{
+	if (argc < 2) {
+		printf("specify filename\n");
+		return 1;
+	}
 	
+	FILE* f = fopen(argv[1], "rb");
+	if (!f) {
+		printf("failed to open file : %s\n", argv[1]);
+		return 1;
+	}
+	File fo(f);
+	ImageInfo imageInfo;
+	ReadImageInfo(fo, imageInfo);
+	
+	size_t width = imageInfo.width;
+	size_t height = imageInfo.height;
+	assert(imageInfo.bitsPerSample == 8 && imageInfo.samplesPerPixel == 1);
+
+	size_t lineSize = (width + 63) & (~63);
+	const size_t size = lineSize * height;
+	uint8_t* pSrc = (uint8_t*) _mm_malloc(size, 64);
+	uint8_t* pDest = (uint8_t*) _mm_malloc(size, 64);
+	uint8_t* pWork = (uint8_t*) _mm_malloc(size*4, 64);
+	uint8_t* pWork2 = (uint8_t*) _mm_malloc(size*4, 64);
+	
+	uint8_t palettes[256 * 4];
+	ReadImageData(fo, pSrc, lineSize, palettes);
+	fclose(f);
+	
+	for (size_t i=0; i<size; ++i) {
+		pSrc[i] = palettes[4 * pSrc[i]];
+	}
+	
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	
+#ifdef _DEBUG
+	const size_t nThreads = 1;
+//	const size_t nThreads = 2;
+//	const size_t nThreads = 4;
+#else
+	const size_t nThreads = si.dwNumberOfProcessors;
+//	const size_t nThreads = 1;
+#endif
+
+#if 0
+    blur_test(
+        nThreads,
+        width,
+        height,
+        lineSize,
+        size,
+        pSrc,
+        pWork,
+        pWork2,
+        pDest
+    );
+#endif
+
+    gamma_correction_test(
+        nThreads,
+        width,
+        height,
+        lineSize,
+        size,
+        pSrc,
+        pWork,
+        pWork2,
+        pDest
+    );
+
+	printf("%zd %zd %zd %p\n", width, height, lineSize, pDest);
+
 	_getch();
 	return 0;
 }
