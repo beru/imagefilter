@@ -14,6 +14,8 @@
 #include <conio.h>
 #include "sym.h"
 
+#include <immintrin.h>
+
 void blur_test(
     size_t nThreads,
     size_t width,
@@ -103,109 +105,117 @@ void blur_test(
 
 }
 
-static const __m256i m256i_lo4BitsMask = _mm256_set1_epi8(0x0F);
-static const __m256i m256i_hi4BitsMask = _mm256_set1_epi8(0xF0);
-static const __m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
-static const __m256i m256i_u8_128_Mask = _mm256_set1_epi8(0x80);
+#define _MM_ALIGN32 __declspec(align(32))
+//#define _MM_ALIGN32 alignas(32) 
 
-struct GammaCorrector
-{
-    double gamma;
-    uint8_t table[256];
-    __m256i lut0, lut1, lut2, lut3, lut4, lut5, lut6, lut7, lut8, lut9,
-            lutA, lutB, lutC, lutD, lutE, lutF;
+static _MM_ALIGN32 const __m256i m256i_lo4BitsMask = _mm256_set1_epi8(0x0F);
+static _MM_ALIGN32 const __m256i m256i_hi4BitsMask = _mm256_set1_epi8(0xF0);
+static _MM_ALIGN32 const __m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
+static _MM_ALIGN32 const __m256i m256i_u8_128_Mask = _mm256_set1_epi8(0x80);
+static _MM_ALIGN32 const __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
 
-    GammaCorrector(double gamma)
-    {
-        Init(gamma);
+void setTable(uint8_t table[256], double gamma) {
+    for (size_t i=0; i<256; ++i) {
+        double di = (double)i / 255.0;
+        table[i] = std::pow(di, gamma) * 255.0 + 0.5;
     }
+}
 
-    void Init(double gamma) {
-        this->gamma = gamma;
-        for (size_t i=0; i<256; ++i) {
-            double di = (double)i / 255.0;
-            table[i] = std::pow(di, gamma) * 255.0 + 0.5;
-        }
-        __m128i val;
-        val = _mm_loadu_si128((__m128i*)(table + 0 * 16));
-        lut0 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 1 * 16));
-        lut1 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 2 * 16));
-        lut2 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 3 * 16));
-        lut3 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 4 * 16));
-        lut4 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 5 * 16));
-        lut5 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 6 * 16));
-        lut6 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 7 * 16));
-        lut7 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 8 * 16));
-        lut8 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 9 * 16));
-        lut9 = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xA * 16));
-        lutA = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xB * 16));
-        lutB = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xC * 16));
-        lutC = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xD * 16));
-        lutD = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xE * 16));
-        lutE = _mm256_broadcastsi128_si256(val);
-        val = _mm_loadu_si128((__m128i*)(table + 0xF * 16));
-        lutF = _mm256_broadcastsi128_si256(val);
-    }
+void setLUT(__m256i lut[16], const uint8_t table[256]) {
+    __m128i val;
+	for (size_t i=0; i<16; ++i) {
+		val = _mm_loadu_si128((__m128i*)(table + i * 16));
+		lut[i] = _mm256_broadcastsi128_si256(val);
+	}
+}
+__forceinline __m256i mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex) {
 
-    __m256i conv(__m256i s) {
-        //return s;
+#if 0
 
-        __m256i maskLo = m256i_lo4BitsMask;
-        __m256i maskHi = m256i_hi4BitsMask;
-        __m256i mask16 = m256i_u8_16_Mask;
-        __m256i mask128 = m256i_u8_128_Mask;
-        __m256i zero = _mm256_setzero_si256();
-        __m256i wrk = s;
-        __m256i tmp;
-        __m256i lt128, gt15;
-        __m256i ret;
+	__m256i ret;
+	const uint8_t* lut2 = (const uint8_t*)lut;
 
-        tmp = _mm256_and_si256(wrk, m256i_u8_128_Mask);
-        lt128 = _mm256_cmpeq_epi8(tmp, zero);
-        wrk = _mm256_blendv_epi8(zero, s, lt128);
-        ret = zero;
-        //ret = _mm256_shuffle_epi8(lut0, wrk);
+#if 1
+	for (int i=0; i<32; ++i) {
+		ret.m256i_u8[i] = lut2[s.m256i_u8[i]];
+	}
+	return ret;
+#else
+	extern int   _mm256_extract_epi8 (__m256i /* src */, const int /* index */);
+	// crazily slow...
+#define SET(idx) ret.m256i_u8[idx] = lut2[_mm256_extract_epi8(s, idx)]
+	SET(0);
+	SET(1);
+	SET(2);
+	SET(3);
+	SET(4);
+	SET(5);
+	SET(6);
+	SET(7);
+	SET(8);
+	SET(9);
+	SET(10);
+	SET(11);
+	SET(12);
+	SET(13);
+	SET(14);
+	SET(15);
+	SET(16);
+	SET(17);
+	SET(18);
+	SET(19);
+	SET(20);
+	SET(21);
+	SET(22);
+	SET(23);
+	SET(24);
+	SET(25);
+	SET(26);
+	SET(27);
+	SET(28);
+	SET(29);
+	SET(30);
+	SET(31);
+	return ret;
+#endif
 
-#define LOOKUP(name) \
-        gt15 = _mm256_cmpgt_epi8(wrk, maskLo);\
-        tmp = _mm256_shuffle_epi8(lut ## name, wrk);\
-        wrk = _mm256_subs_epu8(wrk, mask16);\
-        ret = _mm256_blendv_epi8(tmp, ret, gt15);
+#else
 
-        LOOKUP(0)
-        LOOKUP(1)
-        LOOKUP(2)
-        LOOKUP(3)
-        //LOOKUP(4)
-        //LOOKUP(5)
-        //LOOKUP(6)
-        //LOOKUP(7)
-        //LOOKUP(8)
-        //LOOKUP(9)
-        //LOOKUP(A)
-        //LOOKUP(B)
-        //LOOKUP(C)
-        //LOOKUP(D)
-        //LOOKUP(E)
-        //LOOKUP(F)
-        return ret;
-    }
+	__m256i s = vindex;
+    __m256i tmp;
+    __m256i ret;
 
-};
+    tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);
+    s = _mm256_sub_epi8(s, m256i_u8_16_Mask);
+    ret = _mm256_shuffle_epi8(_mm256_load_si256(lut), tmp);
+
+#define LOOKUP(idx) \
+    tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
+    s = _mm256_sub_epi8(s, m256i_u8_16_Mask);\
+    tmp = _mm256_shuffle_epi8(_mm256_load_si256(lut+idx), tmp);\
+    ret = _mm256_adds_epu8(ret, tmp);
+
+	// a heck a lot of instructions needed...
+//    LOOKUP(0)
+    LOOKUP(1)
+    LOOKUP(2)
+    LOOKUP(3)
+    LOOKUP(4)
+    LOOKUP(5)
+    LOOKUP(6)
+    LOOKUP(7)
+    LOOKUP(8)
+    LOOKUP(9)
+    LOOKUP(10)
+    LOOKUP(11)
+    LOOKUP(12)
+    LOOKUP(13)
+    LOOKUP(14)
+    LOOKUP(15)
+    return ret;
+
+#endif
+}
 
 void gamma_correction_test(
     size_t nThreads,
@@ -222,9 +232,19 @@ void gamma_correction_test(
     Timer t;
     t.Start();
 
+	double gamma = 2.2;
+    _MM_ALIGN32 uint8_t table0[256];
+    _MM_ALIGN32 uint8_t table1[256];
+	setTable(table0, 2.2/1.0);
+	setTable(table1, 1.0/2.2);
+
+	for (int z=0; z<100; ++z) {
+
 #if 1
-    GammaCorrector gammaCorrector0(2.2/1.0);
-    GammaCorrector gammaCorrector1(1.0/2.2);
+	__m256i lut0[16];
+	__m256i lut1[16];
+	setLUT(lut0, table0);
+	setLUT(lut1, table1);
     const uint8_t* pSrcLine = pSrc;
     uint8_t* pDstLine = pDest;
     __m256i byteMask = _mm256_set1_epi16(0x00FF);
@@ -237,31 +257,37 @@ void gamma_correction_test(
         for (size_t x=0; x<xCnt; ++x) {
             __m256i s1 = _mm256_loadu_si256(pSrcLine1+x);
             __m256i s2 = _mm256_loadu_si256(pSrcLine2+x);
-            s1 = gammaCorrector0.conv(s1);
-            s2 = gammaCorrector0.conv(s2);
+            s1 = mm256_u8gather_epu8(lut0, s1);
+            s2 = mm256_u8gather_epu8(lut0, s2);
+#if 1
             __m256i sn = _mm256_avg_epu8(s1, s2);
             __m256i sn2 = _mm256_srli_si256(sn, 1);
             sn = _mm256_and_si256(sn, byteMask);
             sn2 = _mm256_and_si256(sn2, byteMask);
             sn = _mm256_add_epi16(sn, sn2);
             sn = _mm256_srli_epi16(sn, 1);
-            sn = _mm256_packs_epi16(sn, zero);
+            sn = _mm256_packus_epi16(sn, zero);
             sn = _mm256_permute4x64_epi64(sn, _MM_SHUFFLE(0, 0, 2, 0));
-            sn = gammaCorrector1.conv(sn);
+#else
+            __m256i s1_0 = _mm256_and_si256(s1, byteMask);
+            __m256i s1_1 = _mm256_and_si256(_mm256_srli_si256(s1, 1), byteMask);
+            __m256i s2_0 = _mm256_and_si256(s2, byteMask);
+            __m256i s2_1 = _mm256_and_si256(_mm256_srli_si256(s2, 1), byteMask);
+            s1_0 = _mm256_add_epi16(s1_0, s1_1);
+            s2_0 = _mm256_add_epi16(s2_0, s2_1);
+            s1_0 = _mm256_add_epi16(s1_0, s2_0);
+            s1_0 = _mm256_srli_epi16(s1_0, 2);
+            s1_0 = _mm256_packus_epi16(s1_0, zero);
+			s1_0 = _mm256_permute4x64_epi64(s1_0, _MM_SHUFFLE(0, 0, 2, 0));
+			__m256i sn = s1_0;
+#endif
+            sn = mm256_u8gather_epu8(lut1, sn);
             _mm_storeu_si128(pDstLine1+x, _mm256_castsi256_si128(sn));
         }
         pSrcLine += lineSize * 2;
         pDstLine += lineSize;
     }
 #else
-	double gamma = 2.2;
-    uint8_t table1[256];
-    uint8_t table0[256];
-    for (size_t i=0; i<256; ++i) {
-        double di = (double)i / 255.0;
-        table1[i] = std::pow(di, gamma) * 255.0 + 0.5;
-        table0[i] = std::pow(di, 1.0/gamma) * 255.0 + 0.5;
-    }
     const uint8_t* pSrcLine = pSrc;
     uint8_t* pDstLine = pDest;
     for (size_t y=0; y<height/2; ++y) {
@@ -283,6 +309,9 @@ void gamma_correction_test(
         pDstLine += lineSize;
     }
 #endif
+
+
+	}
 
     double sec = t.ElapsedSecond();
     printf("%f\n", sec * 1000.0);
