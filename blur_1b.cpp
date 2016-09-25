@@ -22,6 +22,8 @@
 // THE SOFTWARE.
 //
 
+#include "common.h"
+
 #include "blur_1b.h"
 #include <algorithm>
 #include <emmintrin.h>
@@ -2780,7 +2782,7 @@ void test_20(const Parameter& p) {
 				OffsetPtr(pToLine, toLineOffsetBytes);
 			}
 		}else {
-			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			OffsetPtr(pFromLine, -(ptrdiff_t)r * fromLineOffsetBytes);
 			horizontal.process(pFromLine, pWorkLine);
 			pMinusSrcLine = pWorkLine;
 			for (size_t x=0; x<width; ++x) {
@@ -3103,7 +3105,7 @@ void test_21(const Parameter& p) {
 				OffsetPtr(pToLine, toLineOffsetBytes);
 			}
 		}else {
-			OffsetPtr(pFromLine, -r * fromLineOffsetBytes);
+			OffsetPtr(pFromLine, -(ptrdiff_t)r * fromLineOffsetBytes);
 			horizontal.process(pFromLine, pWorkLine);
 			pMinusSrcLine = pWorkLine;
 			for (size_t x=0; x<width; ++x) {

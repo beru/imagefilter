@@ -1,4 +1,5 @@
 
+#include "../common.h"
 #include "ReadImage.h"
 
 #include <stdio.h>

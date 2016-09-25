@@ -21,17 +21,17 @@ File::File(FILE* pFile)
 
 bool File::Read(void* pBuffer, size_t nNumberOfBytesToRead, size_t& nNumberOfBytesRead)
 {
-	return ReadFile(hFile_, pBuffer, nNumberOfBytesToRead, (LPDWORD)&nNumberOfBytesRead, NULL) != FALSE;
+	return ReadFile(hFile_, pBuffer, (DWORD)nNumberOfBytesToRead, (LPDWORD)&nNumberOfBytesRead, NULL) != FALSE;
 }
 
 bool File::Write(const void* pBuffer, size_t nNumberOfBytesToWrite, size_t& nNumberOfBytesWritten)
 {
-	return WriteFile(hFile_, pBuffer, nNumberOfBytesToWrite, (LPDWORD)&nNumberOfBytesWritten, NULL) != FALSE;
+	return WriteFile(hFile_, pBuffer, (DWORD)nNumberOfBytesToWrite, (LPDWORD)&nNumberOfBytesWritten, NULL) != FALSE;
 }
 
 size_t File::Seek(long lDistanceToMove, size_t dwMoveMethod)
 {
-	return SetFilePointer(hFile_, lDistanceToMove, NULL, dwMoveMethod);
+	return SetFilePointer(hFile_, lDistanceToMove, NULL, (DWORD)dwMoveMethod);
 }
 
 size_t File::Tell() const

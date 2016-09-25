@@ -75,7 +75,7 @@ bool Threads<T>::SetUp(unsigned char nThreads)
 	for (size_t i=0; i<nThreads_; ++i) {
 		ThreadProcCallerInfo& info = threadProcCallerInfos_[i];
 		info.pThis = this;
-		info.slotId = i;
+		info.slotId = (unsigned char)i;
 		HANDLE hThread = (HANDLE) _beginthreadex(NULL, 0, Threads::ThreadProcCaller, &info, 0, &threadIds_[i]);
 		hThreads_[i] = hThread;
 		
