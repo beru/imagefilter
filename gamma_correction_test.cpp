@@ -31,7 +31,7 @@ __forceinline void setLUT(__m256i lut[16], const uint8_t table[256]) {
 	}
 }
 
-#define USE_GATHER
+//#define USE_GATHER
 
 #ifdef USE_GATHER
 __forceinline
@@ -126,28 +126,28 @@ void gamma_correction_test(
 	t.Start();
 
 	double gamma = 2.2;
-	_MM_ALIGN32 uint8_t table0[256];
-	_MM_ALIGN32 uint8_t table1[256];
+	uint8_t table0[256];
+	uint8_t table1[256];
 	setTable(table0, 2.2 / 1.0);
 	setTable(table1, 1.0 / 2.2);
+
+	__m256i byteMask = _mm256_set1_epi16(0x00FF);
+#ifdef USE_GATHER
+	__m256i andMask = _mm256_set1_epi32(0xFF);
+#else
+	__m256i lut0[16];
+	__m256i lut1[16];
+	setLUT(lut0, table0);
+	setLUT(lut1, table1);
+	__m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
+	__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+#endif
 
 	for (int z = 0; z < 1000; ++z) {
 
 #if 1
-
-#ifdef USE_GATHER
-		__m256i andMask = _mm256_set1_epi32(0xFF);
-#else
-		__m256i lut0[16];
-		__m256i lut1[16];
-		setLUT(lut0, table0);
-		setLUT(lut1, table1);
-		__m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
-		__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
-#endif
 		const uint8_t* pSrcLine = pSrc;
 		uint8_t* pDstLine = pDest;
-		__m256i byteMask = _mm256_set1_epi16(0x00FF);
 		const size_t xCnt = (width + 31) / 32;
 		for (size_t y = 0; y < height / 2; ++y) {
 			const __m256i* pSrcLine1 = (const __m256i*) pSrcLine;
