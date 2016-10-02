@@ -15,18 +15,11 @@
 namespace {
 
 #define _MM_ALIGN32 __declspec(align(32))
-	//#define _MM_ALIGN32 alignas(32) 
-
-static _MM_ALIGN32 const __m256i m256i_lo4BitsMask = _mm256_set1_epi8(0x0F);
-//static _MM_ALIGN32 const __m256i m256i_hi4BitsMask = _mm256_set1_epi8(0xF0);
-static _MM_ALIGN32 const __m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
-//static _MM_ALIGN32 const __m256i m256i_u8_128_Mask = _mm256_set1_epi8(0x80);
-static _MM_ALIGN32 const __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
-
-__forceinline void setTable(uint8_t table[256], double gamma) {
+template <typename T>
+__forceinline void setTable(T table[256], double gamma) {
 	for (size_t i = 0; i < 256; ++i) {
 		double di = (double)i / 255.0;
-		table[i] = (uint8_t)(std::pow(di, gamma) * 255.0 + 0.5);
+		table[i] = (T)(std::pow(di, gamma) * 255.0 + 0.5);
 	}
 }
 
@@ -38,7 +31,43 @@ __forceinline void setLUT(__m256i lut[16], const uint8_t table[256]) {
 	}
 }
 
-__forceinline __m256i mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex) {
+#define USE_GATHER
+
+#ifdef USE_GATHER
+__forceinline
+__m256i mm256_u8gather_epu8(const uint8_t* lut, __m256i vindex, __m256i andMask) {
+
+	__m256i lo = _mm256_unpacklo_epi8(vindex, _mm256_setzero_si256());
+	__m256i hi = _mm256_unpackhi_epi8(vindex, _mm256_setzero_si256());
+	__m256i idx0 = _mm256_unpacklo_epi16(lo, _mm256_setzero_si256());
+	__m256i idx1 = _mm256_unpackhi_epi16(lo, _mm256_setzero_si256());
+	__m256i idx2 = _mm256_unpacklo_epi16(hi, _mm256_setzero_si256());
+	__m256i idx3 = _mm256_unpackhi_epi16(hi, _mm256_setzero_si256());
+
+	const int* base = (const int*)lut;
+	__m256i nidx0 = _mm256_i32gather_epi32(base, idx0, 1);
+	__m256i nidx1 = _mm256_i32gather_epi32(base, idx1, 1);
+	__m256i nidx2 = _mm256_i32gather_epi32(base, idx2, 1);
+	__m256i nidx3 = _mm256_i32gather_epi32(base, idx3, 1);
+
+	nidx0 = _mm256_and_si256(nidx0, andMask);
+	nidx1 = _mm256_and_si256(nidx1, andMask);
+	nidx2 = _mm256_and_si256(nidx2, andMask);
+	nidx3 = _mm256_and_si256(nidx3, andMask);
+
+	nidx0 = _mm256_packus_epi32(nidx0, nidx1);
+	nidx2 = _mm256_packus_epi32(nidx2, nidx3);
+	nidx0 = _mm256_packus_epi16(nidx0, nidx2);
+
+	__m256i ret = nidx0;
+	return ret;
+}
+
+#else
+
+__forceinline
+__m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
+										  __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
 
 	__m256i s;
 	__m256i tmp;
@@ -80,6 +109,8 @@ __forceinline __m256i mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex)
 
 }
 
+#endif
+
 void gamma_correction_test(
 	size_t width,
 	size_t height,
@@ -103,14 +134,20 @@ void gamma_correction_test(
 	for (int z = 0; z < 1000; ++z) {
 
 #if 1
+
+#ifdef USE_GATHER
+		__m256i andMask = _mm256_set1_epi32(0xFF);
+#else
 		__m256i lut0[16];
 		__m256i lut1[16];
 		setLUT(lut0, table0);
 		setLUT(lut1, table1);
+		__m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
+		__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+#endif
 		const uint8_t* pSrcLine = pSrc;
 		uint8_t* pDstLine = pDest;
 		__m256i byteMask = _mm256_set1_epi16(0x00FF);
-		__m256i zero = _mm256_setzero_si256();
 		const size_t xCnt = (width + 31) / 32;
 		for (size_t y = 0; y < height / 2; ++y) {
 			const __m256i* pSrcLine1 = (const __m256i*) pSrcLine;
@@ -119,8 +156,14 @@ void gamma_correction_test(
 			for (size_t x = 0; x < xCnt; ++x) {
 				__m256i s1 = _mm256_loadu_si256(pSrcLine1 + x);
 				__m256i s2 = _mm256_loadu_si256(pSrcLine2 + x);
-				s1 = mm256_u8gather_epu8(lut0, s1);
-				s2 = mm256_u8gather_epu8(lut0, s2);
+#ifdef USE_GATHER
+				s1 = mm256_u8gather_epu8(table0, s1, andMask);
+				s2 = mm256_u8gather_epu8(table0, s2, andMask);
+#else
+				s1 = mm256_u8gather_epu8(lut0, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				s2 = mm256_u8gather_epu8(lut0, s2, m256i_u8_16_Mask, m256i_u8_112_Mask);
+#endif
+				
 #if 1
 				__m256i sn = _mm256_avg_epu8(s1, s2);
 				__m256i sn2 = _mm256_srli_si256(sn, 1);
@@ -128,7 +171,7 @@ void gamma_correction_test(
 				sn2 = _mm256_and_si256(sn2, byteMask);
 				sn = _mm256_add_epi16(sn, sn2);
 				sn = _mm256_srli_epi16(sn, 1);
-				sn = _mm256_packus_epi16(sn, zero);
+				sn = _mm256_packus_epi16(sn, _mm256_setzero_si256());
 				sn = _mm256_permute4x64_epi64(sn, _MM_SHUFFLE(0, 0, 2, 0));
 #else
 				__m256i s1_0 = _mm256_and_si256(s1, byteMask);
@@ -139,11 +182,17 @@ void gamma_correction_test(
 				s2_0 = _mm256_add_epi16(s2_0, s2_1);
 				s1_0 = _mm256_add_epi16(s1_0, s2_0);
 				s1_0 = _mm256_srli_epi16(s1_0, 2);
-				s1_0 = _mm256_packus_epi16(s1_0, zero);
+				s1_0 = _mm256_packus_epi16(s1_0, _mm256_setzero_si256());
 				s1_0 = _mm256_permute4x64_epi64(s1_0, _MM_SHUFFLE(0, 0, 2, 0));
 				__m256i sn = s1_0;
 #endif
-				sn = mm256_u8gather_epu8(lut1, sn);
+
+#ifdef USE_GATHER
+				sn = mm256_u8gather_epu8(table1, sn, andMask);
+#else
+				sn = mm256_u8gather_epu8(lut1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
+#endif
+				
 				_mm_storeu_si128(pDstLine1 + x, _mm256_castsi256_si128(sn));
 			}
 			pSrcLine += lineSize * 2;
