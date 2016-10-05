@@ -67,7 +67,7 @@ __m256i mm256_u8gather_epu8(const uint8_t* lut, __m256i vindex, __m256i andMask)
 
 __forceinline
 __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
-										  __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
+										 __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
 
 	__m256i s;
 	__m256i tmp;
@@ -77,7 +77,7 @@ __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
 	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
 	s = _mm256_sub_epi8(s, m256i_u8_16_Mask);\
 	tmp = _mm256_shuffle_epi8(lut[idx], tmp);\
-	ret = _mm256_adds_epu8(ret, tmp);
+	ret = _mm256_or_si256(ret, tmp);
 
 	// a heck a lot of instructions needed...
 	//LOOKUP(0)
@@ -103,10 +103,9 @@ __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
 	//LOOKUP(15)
 	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);
 	tmp = _mm256_shuffle_epi8(lut[15], tmp);
-	ret = _mm256_adds_epu8(ret, tmp);
+	ret = _mm256_or_si256(ret, tmp);
 
 	return ret;
-
 }
 
 #endif
@@ -120,7 +119,7 @@ void gamma_correction_test(
 	uint8_t* pWork,
 	uint8_t* pWork2,
 	uint8_t* pDest
-)
+	)
 {
 	Timer t;
 	t.Start();
