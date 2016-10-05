@@ -70,6 +70,8 @@ __forceinline
 __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[N], __m256i vindex,
 										  __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
 
+	static_assert(N <= 16, "N must be less than or equal to 16.");
+
 	// a heck a lot of instructions needed...
 	//LOOKUP(0)
 	__m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
@@ -98,10 +100,19 @@ __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[N], __m256i vindex,
 	LOOKUP(13)
 	LOOKUP(14)
 	LOOKUP(15)
-
 }
 
 #endif
+
+__forceinline
+__m256i mm256_u8lookup_naive(const uint8_t table[256], __m256i idx)
+{
+	__m256i ret;
+	for (int i=0; i<32; ++i) {
+		ret.m256i_u8[i] = table[idx.m256i_u8[i]];
+	}
+	return ret;
+}
 
 void gamma_correction_test(
 	size_t width,
@@ -151,9 +162,12 @@ void gamma_correction_test(
 #ifdef USE_GATHER
 				s1 = mm256_u8gather_epu8(table0, s1, andMask);
 				s2 = mm256_u8gather_epu8(table0, s2, andMask);
-#else
+#elif 1
 				s1 = mm256_u8gather_epu8<16>(lut0, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
 				s2 = mm256_u8gather_epu8<16>(lut0, s2, m256i_u8_16_Mask, m256i_u8_112_Mask);
+#else
+				s1 = mm256_u8lookup_naive(table0, s1);
+				s2 = mm256_u8lookup_naive(table0, s2);
 #endif
 				
 #if 1
@@ -181,8 +195,10 @@ void gamma_correction_test(
 
 #ifdef USE_GATHER
 				sn = mm256_u8gather_epu8(table1, sn, andMask);
-#else
+#elif 1
 				sn = mm256_u8gather_epu8<16>(lut1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
+#else
+				sn = mm256_u8lookup_naive(table1, sn);
 #endif
 				
 				_mm_storeu_si128(pDstLine1 + x, _mm256_castsi256_si128(sn));
