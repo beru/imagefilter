@@ -65,25 +65,23 @@ __m256i mm256_u8gather_epu8(const uint8_t* lut, __m256i vindex, __m256i andMask)
 
 #else
 
+template <unsigned N>
 __forceinline
-__m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
-										 __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
+__m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[N], __m256i vindex,
+										  __m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask) {
 
-	__m256i s;
-	__m256i tmp;
-	__m256i ret;
+	// a heck a lot of instructions needed...
+	//LOOKUP(0)
+	__m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
+	__m256i s = _mm256_sub_epi8(vindex, m256i_u8_16_Mask);
+	__m256i ret = _mm256_shuffle_epi8(lut[0], tmp);
 
 #define LOOKUP(idx) \
 	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
 	s = _mm256_sub_epi8(s, m256i_u8_16_Mask);\
 	tmp = _mm256_shuffle_epi8(lut[idx], tmp);\
-	ret = _mm256_or_si256(ret, tmp);
-
-	// a heck a lot of instructions needed...
-	//LOOKUP(0)
-	tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
-	s = _mm256_sub_epi8(vindex, m256i_u8_16_Mask);
-	ret = _mm256_shuffle_epi8(lut[0], tmp);
+	ret = _mm256_or_si256(ret, tmp); \
+	if (idx + 1 == N) return ret;
 
 	LOOKUP(1)
 	LOOKUP(2)
@@ -99,13 +97,8 @@ __m256i __vectorcall mm256_u8gather_epu8(const __m256i lut[16], __m256i vindex,
 	LOOKUP(12)
 	LOOKUP(13)
 	LOOKUP(14)
+	LOOKUP(15)
 
-	//LOOKUP(15)
-	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);
-	tmp = _mm256_shuffle_epi8(lut[15], tmp);
-	ret = _mm256_or_si256(ret, tmp);
-
-	return ret;
 }
 
 #endif
@@ -119,7 +112,7 @@ void gamma_correction_test(
 	uint8_t* pWork,
 	uint8_t* pWork2,
 	uint8_t* pDest
-	)
+)
 {
 	Timer t;
 	t.Start();
@@ -159,8 +152,8 @@ void gamma_correction_test(
 				s1 = mm256_u8gather_epu8(table0, s1, andMask);
 				s2 = mm256_u8gather_epu8(table0, s2, andMask);
 #else
-				s1 = mm256_u8gather_epu8(lut0, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
-				s2 = mm256_u8gather_epu8(lut0, s2, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				s1 = mm256_u8gather_epu8<16>(lut0, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				s2 = mm256_u8gather_epu8<16>(lut0, s2, m256i_u8_16_Mask, m256i_u8_112_Mask);
 #endif
 				
 #if 1
@@ -189,7 +182,7 @@ void gamma_correction_test(
 #ifdef USE_GATHER
 				sn = mm256_u8gather_epu8(table1, sn, andMask);
 #else
-				sn = mm256_u8gather_epu8(lut1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				sn = mm256_u8gather_epu8<16>(lut1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
 #endif
 				
 				_mm_storeu_si128(pDstLine1 + x, _mm256_castsi256_si128(sn));
