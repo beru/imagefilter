@@ -59,18 +59,22 @@
 #ifdef _MSC_VER
 #define YESINLINE __forceinline
 #else
-#define YESINLINE __attribute__((always_inline))
+#define YESINLINE __attribute__((always_inline)) inline
 #endif
+
+#ifdef _MSC_VER
 
 static YESINLINE __m256i
 ymm_u8lookup_naive(const uint8_t table[256], __m256i idx)
 {
-	__m256i ret;
-	for (int i = 0; i<32; ++i) {
-		ret.m256i_u8[i] = table[idx.m256i_u8[i]];
-	}
-	return ret;
+    __m256i ret;
+    for (int i = 0; i<32; ++i) {
+        ret.m256i_u8[i] = table[idx.m256i_u8[i]];
+    }
+    return ret;
 }
+
+#endif
 
 static YESINLINE __m256i
 ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex, __m256i andMask) {
@@ -104,47 +108,47 @@ ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex, __m256i andMask) {
 template <unsigned N>
 YESINLINE __m256i
 ymm_u8lookup_avx2shuffle(
-//	const __m128i* lut,
-	const __m256i* lut,
-	__m256i vindex,
-	__m256i m256i_u8_all_16,
-	__m256i m256i_u8_112_Mask
+//  const __m128i* lut,
+    const __m256i* lut,
+    __m256i vindex,
+    __m256i m256i_u8_all_16,
+    __m256i m256i_u8_112_Mask
 ) {
-	static_assert(N != 0, "N must not be 0.");
-	static_assert(N <= 16, "N must be less than or equal to 16.");
+    static_assert(N != 0, "N must not be 0.");
+    static_assert(N <= 16, "N must be less than or equal to 16.");
 
-	// a heck a lot of instructions needed...
-	//LOOKUP(0)
-//	__m256i t = _mm256_broadcastsi128_si256(lut[0]);
-	__m256i t = _mm256_loadu_si256(lut + 0);
-	__m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
-	__m256i s = _mm256_sub_epi8(vindex, m256i_u8_all_16);
-	__m256i ret = _mm256_shuffle_epi8(t, tmp);
-	if (N == 1) return ret;
+    // a heck a lot of instructions needed...
+    //LOOKUP(0)
+//  __m256i t = _mm256_broadcastsi128_si256(lut[0]);
+    __m256i t = _mm256_loadu_si256(lut + 0);
+    __m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
+    __m256i s = _mm256_sub_epi8(vindex, m256i_u8_all_16);
+    __m256i ret = _mm256_shuffle_epi8(t, tmp);
+    if (N == 1) return ret;
 
 #define LOOKUP(idx) \
-	t = _mm256_loadu_si256(lut + idx);\
-	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
-	s = _mm256_sub_epi8(s, m256i_u8_all_16);\
-	tmp = _mm256_shuffle_epi8(t, tmp);\
-	ret = _mm256_or_si256(ret, tmp); \
-	if (idx + 1 == N) return ret;
+    t = _mm256_loadu_si256(lut + idx);\
+    tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
+    s = _mm256_sub_epi8(s, m256i_u8_all_16);\
+    tmp = _mm256_shuffle_epi8(t, tmp);\
+    ret = _mm256_or_si256(ret, tmp); \
+    if (idx + 1 == N) return ret;
 
-	LOOKUP(1)
-	LOOKUP(2)
-	LOOKUP(3)
-	LOOKUP(4)
-	LOOKUP(5)
-	LOOKUP(6)
-	LOOKUP(7)
-	LOOKUP(8)
-	LOOKUP(9)
-	LOOKUP(10)
-	LOOKUP(11)
-	LOOKUP(12)
-	LOOKUP(13)
-	LOOKUP(14)
-	LOOKUP(15)
+    LOOKUP(1)
+    LOOKUP(2)
+    LOOKUP(3)
+    LOOKUP(4)
+    LOOKUP(5)
+    LOOKUP(6)
+    LOOKUP(7)
+    LOOKUP(8)
+    LOOKUP(9)
+    LOOKUP(10)
+    LOOKUP(11)
+    LOOKUP(12)
+    LOOKUP(13)
+    LOOKUP(14)
+    LOOKUP(15)
 #undef LOOKUP
 }
 
@@ -304,68 +308,76 @@ full_scalar(unsigned char *table, __m256i idx)
 static NOINLINE void
 test_results(const unsigned char idx[256], unsigned char val[256])
 {
-	const __m256i* vidx = (const __m256i*)idx;
-	__m256i r;
-	__m256i ref_results[8];
-	__m256i results[8];
+    const __m256i* vidx = (const __m256i*)idx;
+    __m256i r;
+    __m256i ref_results[8];
+    __m256i results[8];
 
-	auto match = [&](const char* name){
-		for (int i=0; i<8; ++i) {
-			__m256i b = _mm256_cmpeq_epi8(ref_results[i], results[i]);
-			for (int i=0; i<32; ++i) {
-				if (!b.m256i_u8[i]) {
-					printf("FAIL %s\n", name);
-					return;
-				}
-			}
-		}
-		printf("PASS %s\n", name);
-	};
+    auto match = [&](const char* name){
+        for (int i=0; i<8; ++i) {
+            __m256i b = _mm256_cmpeq_epi8(ref_results[i], results[i]);
+            for (int i=0; i<32; ++i) {
+                if (!b.m256i_u8[i]) {
+                    printf("FAIL %s\n", name);
+                    return;
+                }
+            }
+        }
+        printf("PASS %s\n", name);
+    };
+
+    uint8_t* pref = (uint8_t*) &ref_results[0];
+    for (int i=0; i<256; ++i) {
+        pref[i] = val[idx[i]];
+    }
 
 
-	// naive
-	for (int i=0; i<8; ++i) {
-		r = ymm_u8lookup_naive(val, vidx[i]);
-		ref_results[i] = r;
-	}
+#ifdef _MSC_VER
+    // naive
+    for (int i=0; i<8; ++i) {
+        r = ymm_u8lookup_naive(val, vidx[i]);
+        results[i] = r;
+    }
+    match("naive");
+#endif
 
-	// avx2gather
-	__m256i mask_FF = _mm256_set1_epi32(0xFF);
-	for (int i=0; i<8; ++i) {
-		r = ymm_u8lookup_avx2gather(val, vidx[i], mask_FF);
-		results[i] = r;
-	}
-	match("avx2gather");
+    // avx2gather
+    __m256i mask_FF = _mm256_set1_epi32(0xFF);
+    for (int i=0; i<8; ++i) {
+        r = ymm_u8lookup_avx2gather(val, vidx[i], mask_FF);
+        results[i] = r;
+    }
+    match("avx2gather");
 
-	// avx2shuffle
-	__m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
-	__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
-	__m256i lut[32];
+    // avx2shuffle
+    __m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
+    __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+    __m256i lut[32];
     for (size_t i = 0; i < 16; ++i) {
         __m128i tmp = _mm_loadu_si128((__m128i*)(val + i * 16));
         lut[i] = _mm256_broadcastsi128_si256(tmp);
     }
-	for (int i=0; i<8; ++i) {
-		r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[i], m256i_u8_all_16, m256i_u8_112_Mask);
-		results[i] = r;
-	}
-	match("avx2shuffle");
+    for (int i=0; i<8; ++i) {
+        r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[i], m256i_u8_all_16, m256i_u8_112_Mask);
+        results[i] = r;
+    }
+    match("avx2shuffle");
 
-	// mov32
-	for (int i=0; i<8; ++i) {
-		r = mov32(val, vidx[i]);
-		results[i] = r;
-	}
-	match("mov32");
+    // mov32
+    for (int i=0; i<8; ++i) {
+        r = mov32(val, vidx[i]);
+        results[i] = r;
+    }
+    match("mov32");
 
-	// full scalar
-	for (int i=0; i<8; ++i) {
-		r = full_scalar(val, vidx[i]);
-		results[i] = r;
-	}
-	match("full_scalar");
-	
-	printf("\n");
+    // full scalar
+    for (int i=0; i<8; ++i) {
+        r = full_scalar(val, vidx[i]);
+        results[i] = r;
+    }
+    match("full_scalar");
+    
+    printf("\n");
 }
 
 
@@ -375,75 +387,81 @@ test_speed(const unsigned char idx[256], unsigned char val[256])
     uint64_t t0, t1;
     int nloop = 1024*1024*8;
 
-	const __m256i* vidx = (const __m256i*)idx;
-	__m256i tmp = _mm256_setzero_si256();
-	__m256i r;
+    const __m256i* vidx = (const __m256i*)idx;
+    __m256i tmp = _mm256_setzero_si256();
+    __m256i r;
 
-	// naive method
+#ifdef _MSC_VER
+    // naive method
     t0 = __rdtsc();
     for (int i=0; i<nloop; i++) {
-		for (int j=0; j<8; j++) {
-			r = ymm_u8lookup_naive(val, vidx[j]);
-			tmp = _mm256_or_si256(tmp, r);
-		}
+        for (int j=0; j<8; j++) {
+            r = ymm_u8lookup_naive(val, vidx[j]);
+            tmp = _mm256_or_si256(tmp, r);
+        }
     }
     t1 = __rdtsc();
     printf("naive %f\n", (t1-t0) / (double)nloop);
+#endif
 
-	// avx2gather
-	__m256i mask_FF = _mm256_set1_epi32(0xFF);
+    // avx2gather
+    __m256i mask_FF = _mm256_set1_epi32(0xFF);
     t0 = __rdtsc();
     for (int i=0; i<nloop; i++) {
-		for (int j=0; j<8; j++) {
-			r = ymm_u8lookup_avx2gather(val, vidx[j], mask_FF);
-			tmp = _mm256_or_si256(tmp, r);
-		}
+        for (int j=0; j<8; j++) {
+            r = ymm_u8lookup_avx2gather(val, vidx[j], mask_FF);
+            tmp = _mm256_or_si256(tmp, r);
+        }
     }
     t1 = __rdtsc();
     printf("avx2gather %f\n", (t1-t0) / (double)nloop);
 
-	// avx2shuffle
+    // avx2shuffle
     t0 = __rdtsc();
-	__m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
-	__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
-	__m256i lut[32];
+    __m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
+    __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+    __m256i lut[32];
     for (size_t i = 0; i < 16; ++i) {
         __m128i tmp = _mm_loadu_si128((__m128i*)(val + i * 16));
         lut[i] = _mm256_broadcastsi128_si256(tmp);
     }
     for (int i=0; i<nloop; i++) {
-		for (int j=0; j<8; j++) {
-			r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[j], m256i_u8_all_16, m256i_u8_112_Mask);
-			tmp = _mm256_or_si256(tmp, r);
-		}
+        for (int j=0; j<8; j++) {
+            r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[j], m256i_u8_all_16, m256i_u8_112_Mask);
+            tmp = _mm256_or_si256(tmp, r);
+        }
     }
     t1 = __rdtsc();
     printf("avx2shuffle %f\n", (t1-t0) / (double)nloop);
 
-	// mov32
+    // mov32
     t0 = __rdtsc();
     for (int i=0; i<nloop; i++) {
-		for (int j=0; j<8; j++) {
-			r = mov32(val, vidx[j]);
-			tmp = _mm256_or_si256(tmp, r);
-		}
+        for (int j=0; j<8; j++) {
+            r = mov32(val, vidx[j]);
+            tmp = _mm256_or_si256(tmp, r);
+        }
     }
     t1 = __rdtsc();
     printf("mov32 %f\n", (t1-t0) / (double)nloop);
 
-	// full scalar
+    // full scalar
     t0 = __rdtsc();
     for (int i=0; i<nloop; i++) {
-		for (int j=0; j<8; j++) {
-			r = full_scalar(val, vidx[j]);
-			tmp = _mm256_or_si256(tmp, r);
-		}
+        for (int j=0; j<8; j++) {
+            r = full_scalar(val, vidx[j]);
+            tmp = _mm256_or_si256(tmp, r);
+        }
     }
     t1 = __rdtsc();
     printf("full scalar %f\n", (t1-t0) / (double)nloop);
 
-	int64_t total = tmp.m256i_i64[0] + tmp.m256i_i64[1] + tmp.m256i_i64[2] + tmp.m256i_i64[3];
-	printf("%lld\n\n", (total+1LL)/total);
+#ifdef _MSC_VER
+    int64_t total = tmp.m256i_i64[0] + tmp.m256i_i64[1] + tmp.m256i_i64[2] + tmp.m256i_i64[3];
+#else
+    int64_t total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+#endif
+    printf("%lld\n\n", (total+1LL)/total);
 }
 
 int
@@ -469,14 +487,14 @@ main(int argc, char **argv)
         mem_idx[i] = 255 - i;
     }
 
-	test_results(mem_idx, mem_val);
+    test_results(mem_idx, mem_val);
 
     test_speed(mem_idx, mem_val);
     test_speed(mem_idx, mem_val);
 
 #ifdef _MSC_VER
-	_getch();
+    _getch();
 #endif
-	return 0;
+    return 0;
 }
 
