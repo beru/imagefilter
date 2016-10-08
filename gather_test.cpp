@@ -315,17 +315,18 @@ test_results(const unsigned char idx[256], unsigned char val[256])
 
     auto match = [&](const char* name){
         char buff[32];
+        bool failed = false;
         for (int i=0; i<8; ++i) {
             __m256i a = _mm256_cmpeq_epi8(ref_results[i], results[i]);
             _mm256_storeu_si256((__m256i*)buff, a);
             for (int i=0; i<32; ++i) {
                 if (!buff[i]) {
-                    printf("FAIL %s\n", name);
-                    return;
+                    failed = true;
                 }
             }
+            results[i] = _mm256_setzero_si256();
         }
-        printf("PASS %s\n", name);
+        printf("%s %s\n", (failed ? "FAIL" : "PASS"), name);
     };
 
     uint8_t* pref = (uint8_t*) &ref_results[0];
