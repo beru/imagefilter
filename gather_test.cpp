@@ -314,10 +314,12 @@ test_results(const unsigned char idx[256], unsigned char val[256])
     __m256i results[8];
 
     auto match = [&](const char* name){
+        char buff[32];
         for (int i=0; i<8; ++i) {
-            __m256i b = _mm256_cmpeq_epi8(ref_results[i], results[i]);
+            __m256i a = _mm256_cmpeq_epi8(ref_results[i], results[i]);
+            _mm256_storeu_si256((__m256i*)buff, a);
             for (int i=0; i<32; ++i) {
-                if (!b.m256i_u8[i]) {
+                if (!buff[i]) {
                     printf("FAIL %s\n", name);
                     return;
                 }
