@@ -150,7 +150,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\gather_test.cpp" />
+    <ClCompile Include="..\gamma_correction_test.cpp" />
     <ClCompile Include="..\ReadImage\File.cpp" />
     <ClCompile Include="..\ReadImage\ReadImage.cpp" />
   </ItemGroup>
