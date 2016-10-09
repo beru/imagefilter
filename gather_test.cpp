@@ -77,7 +77,7 @@ ymm_u8lookup_naive(const uint8_t table[256], __m256i idx)
 #endif
 
 static YESINLINE __m256i
-ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex, __m256i andMask) {
+ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex) {
 
     __m256i lo = _mm256_unpacklo_epi8(vindex, _mm256_setzero_si256());
     __m256i hi = _mm256_unpackhi_epi8(vindex, _mm256_setzero_si256());
@@ -86,16 +86,16 @@ ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex, __m256i andMask) {
     __m256i idx2 = _mm256_unpacklo_epi16(hi, _mm256_setzero_si256());
     __m256i idx3 = _mm256_unpackhi_epi16(hi, _mm256_setzero_si256());
 
-    const int* base = (const int*)lut;
+    const int* base = (const int*)(lut - 3);
     __m256i nidx0 = _mm256_i32gather_epi32(base, idx0, 1);
     __m256i nidx1 = _mm256_i32gather_epi32(base, idx1, 1);
     __m256i nidx2 = _mm256_i32gather_epi32(base, idx2, 1);
     __m256i nidx3 = _mm256_i32gather_epi32(base, idx3, 1);
 
-    nidx0 = _mm256_and_si256(nidx0, andMask);
-    nidx1 = _mm256_and_si256(nidx1, andMask);
-    nidx2 = _mm256_and_si256(nidx2, andMask);
-    nidx3 = _mm256_and_si256(nidx3, andMask);
+    nidx0 = _mm256_srli_epi32(nidx0, 24);
+    nidx1 = _mm256_srli_epi32(nidx1, 24);
+    nidx2 = _mm256_srli_epi32(nidx2, 24);
+    nidx3 = _mm256_srli_epi32(nidx3, 24);
 
     nidx0 = _mm256_packus_epi32(nidx0, nidx1);
     nidx2 = _mm256_packus_epi32(nidx2, nidx3);
@@ -345,9 +345,8 @@ test_results(const unsigned char idx[256], unsigned char val[256])
 #endif
 
     // avx2gather
-    __m256i mask_FF = _mm256_set1_epi32(0xFF);
     for (int i=0; i<8; ++i) {
-        r = ymm_u8lookup_avx2gather(val, vidx[i], mask_FF);
+        r = ymm_u8lookup_avx2gather(val, vidx[i]);
         results[i] = r;
     }
     match("avx2gather");
@@ -408,11 +407,10 @@ test_speed(const unsigned char idx[256], unsigned char val[256])
 #endif
 
     // avx2gather
-    __m256i mask_FF = _mm256_set1_epi32(0xFF);
     t0 = __rdtsc();
     for (int i=0; i<nloop; i++) {
         for (int j=0; j<8; j++) {
-            r = ymm_u8lookup_avx2gather(val, vidx[j], mask_FF);
+            r = ymm_u8lookup_avx2gather(val, vidx[j]);
             tmp = _mm256_or_si256(tmp, r);
         }
     }
