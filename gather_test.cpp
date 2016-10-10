@@ -112,7 +112,7 @@ ymm_u8lookup_avx2shuffle(
     const __m256i* lut,
     __m256i vindex,
     __m256i m256i_u8_all_16,
-    __m256i m256i_u8_112_Mask
+    __m256i m256i_u8_all_112
 ) {
     static_assert(N != 0, "N must not be 0.");
     static_assert(N <= 16, "N must be less than or equal to 16.");
@@ -121,14 +121,14 @@ ymm_u8lookup_avx2shuffle(
     //LOOKUP(0)
 //  __m256i t = _mm256_broadcastsi128_si256(lut[0]);
     __m256i t = _mm256_loadu_si256(lut + 0);
-    __m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
+    __m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_all_112);
     __m256i s = _mm256_sub_epi8(vindex, m256i_u8_all_16);
     __m256i ret = _mm256_shuffle_epi8(t, tmp);
     if (N == 1) return ret;
 
 #define LOOKUP(idx) \
     t = _mm256_loadu_si256(lut + idx);\
-    tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
+    tmp = _mm256_adds_epu8(s, m256i_u8_all_112);\
     s = _mm256_sub_epi8(s, m256i_u8_all_16);\
     tmp = _mm256_shuffle_epi8(t, tmp);\
     ret = _mm256_or_si256(ret, tmp); \
@@ -353,14 +353,14 @@ test_results(const unsigned char idx[256], unsigned char val[256])
 
     // avx2shuffle
     __m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
-    __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+    __m256i m256i_u8_all_112 = _mm256_set1_epi8(112);
     __m256i lut[32];
     for (size_t i = 0; i < 16; ++i) {
         __m128i tmp = _mm_loadu_si128((__m128i*)(val + i * 16));
         lut[i] = _mm256_broadcastsi128_si256(tmp);
     }
     for (int i=0; i<8; ++i) {
-        r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[i], m256i_u8_all_16, m256i_u8_112_Mask);
+        r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[i], m256i_u8_all_16, m256i_u8_all_112);
         results[i] = r;
     }
     match("avx2shuffle");
@@ -420,7 +420,7 @@ test_speed(const unsigned char idx[256], unsigned char val[256])
     // avx2shuffle
     t0 = __rdtsc();
     __m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
-    __m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+    __m256i m256i_u8_all_112 = _mm256_set1_epi8(112);
     __m256i lut[32];
     for (size_t i = 0; i < 16; ++i) {
         __m128i tmp = _mm_loadu_si128((__m128i*)(val + i * 16));
@@ -428,7 +428,7 @@ test_speed(const unsigned char idx[256], unsigned char val[256])
     }
     for (int i=0; i<nloop; i++) {
         for (int j=0; j<8; j++) {
-            r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[j], m256i_u8_all_16, m256i_u8_112_Mask);
+            r = ymm_u8lookup_avx2shuffle<16>(lut, vidx[j], m256i_u8_all_16, m256i_u8_all_112);
             tmp = _mm256_or_si256(tmp, r);
         }
     }
