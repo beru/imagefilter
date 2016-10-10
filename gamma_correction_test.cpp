@@ -32,109 +32,109 @@ __forceinline void setLUT(__m256i lut[16], const uint8_t table[256]) {
 }
 
 __forceinline
-__m256i mm256_u8lookup_naive(const uint8_t table[256], __m256i idx)
+__m256i ymm_u8lookup_naive(const uint8_t table[256], __m256i idx)
 {
-	__m256i ret;
-	for (int i = 0; i<32; ++i) {
-		ret.m256i_u8[i] = table[idx.m256i_u8[i]];
-	}
-	return ret;
+    __m256i ret;
+    for (int i = 0; i<32; ++i) {
+        ret.m256i_u8[i] = table[idx.m256i_u8[i]];
+    }
+    return ret;
 }
 
 __forceinline
-__m256i mm256_u8gather_epu8(const uint8_t* lut, __m256i vindex, __m256i andMask) {
+__m256i ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex) {
 
-	__m256i lo = _mm256_unpacklo_epi8(vindex, _mm256_setzero_si256());
-	__m256i hi = _mm256_unpackhi_epi8(vindex, _mm256_setzero_si256());
-	__m256i idx0 = _mm256_unpacklo_epi16(lo, _mm256_setzero_si256());
-	__m256i idx1 = _mm256_unpackhi_epi16(lo, _mm256_setzero_si256());
-	__m256i idx2 = _mm256_unpacklo_epi16(hi, _mm256_setzero_si256());
-	__m256i idx3 = _mm256_unpackhi_epi16(hi, _mm256_setzero_si256());
+    __m256i lo = _mm256_unpacklo_epi8(vindex, _mm256_setzero_si256());
+    __m256i hi = _mm256_unpackhi_epi8(vindex, _mm256_setzero_si256());
+    __m256i idx0 = _mm256_unpacklo_epi16(lo, _mm256_setzero_si256());
+    __m256i idx1 = _mm256_unpackhi_epi16(lo, _mm256_setzero_si256());
+    __m256i idx2 = _mm256_unpacklo_epi16(hi, _mm256_setzero_si256());
+    __m256i idx3 = _mm256_unpackhi_epi16(hi, _mm256_setzero_si256());
 
-	const int* base = (const int*)lut;
-	__m256i nidx0 = _mm256_i32gather_epi32(base, idx0, 1);
-	__m256i nidx1 = _mm256_i32gather_epi32(base, idx1, 1);
-	__m256i nidx2 = _mm256_i32gather_epi32(base, idx2, 1);
-	__m256i nidx3 = _mm256_i32gather_epi32(base, idx3, 1);
+    const int* base = (const int*)(lut - 3);
+    __m256i nidx0 = _mm256_i32gather_epi32(base, idx0, 1);
+    __m256i nidx1 = _mm256_i32gather_epi32(base, idx1, 1);
+    __m256i nidx2 = _mm256_i32gather_epi32(base, idx2, 1);
+    __m256i nidx3 = _mm256_i32gather_epi32(base, idx3, 1);
 
-	nidx0 = _mm256_and_si256(nidx0, andMask);
-	nidx1 = _mm256_and_si256(nidx1, andMask);
-	nidx2 = _mm256_and_si256(nidx2, andMask);
-	nidx3 = _mm256_and_si256(nidx3, andMask);
+    nidx0 = _mm256_srli_epi32(nidx0, 24);
+    nidx1 = _mm256_srli_epi32(nidx1, 24);
+    nidx2 = _mm256_srli_epi32(nidx2, 24);
+    nidx3 = _mm256_srli_epi32(nidx3, 24);
 
-	nidx0 = _mm256_packus_epi32(nidx0, nidx1);
-	nidx2 = _mm256_packus_epi32(nidx2, nidx3);
-	nidx0 = _mm256_packus_epi16(nidx0, nidx2);
+    nidx0 = _mm256_packus_epi32(nidx0, nidx1);
+    nidx2 = _mm256_packus_epi32(nidx2, nidx3);
+    nidx0 = _mm256_packus_epi16(nidx0, nidx2);
 
-	__m256i ret = nidx0;
-	return ret;
+    __m256i ret = nidx0;
+    return ret;
 }
 
 template <unsigned N>
 __forceinline
-__m256i __vectorcall mm256_u8gather_epu8(
-//	const __m128i* lut,
-	const __m256i* lut,
-	__m256i vindex,
-	__m256i m256i_u8_16_Mask,
-	__m256i m256i_u8_112_Mask
+__m256i ymm_u8lookup_avx2shuffle(
+//  const __m128i* lut,
+    const __m256i* lut,
+    __m256i vindex,
+    __m256i m256i_u8_all_16,
+    __m256i m256i_u8_all_112
 ) {
-	static_assert(N != 0, "N must not be 0.");
-	static_assert(N <= 16, "N must be less than or equal to 16.");
+    static_assert(N != 0, "N must not be 0.");
+    static_assert(N <= 16, "N must be less than or equal to 16.");
 
-	// a heck a lot of instructions needed...
-	//LOOKUP(0)
-//	__m256i t = _mm256_broadcastsi128_si256(lut[0]);
-	__m256i t = _mm256_loadu_si256(lut + 0);
-	__m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_112_Mask);
-	__m256i s = _mm256_sub_epi8(vindex, m256i_u8_16_Mask);
-	__m256i ret = _mm256_shuffle_epi8(t, tmp);
-	if (N == 1) return ret;
+    // a heck a lot of instructions needed...
+    //LOOKUP(0)
+//  __m256i t = _mm256_broadcastsi128_si256(lut[0]);
+    __m256i t = _mm256_loadu_si256(lut + 0);
+    __m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_all_112);
+    __m256i s = _mm256_sub_epi8(vindex, m256i_u8_all_16);
+    __m256i ret = _mm256_shuffle_epi8(t, tmp);
+    if (N == 1) return ret;
 
 #define LOOKUP(idx) \
-	t = _mm256_loadu_si256(lut + idx);\
-	tmp = _mm256_adds_epu8(s, m256i_u8_112_Mask);\
-	s = _mm256_sub_epi8(s, m256i_u8_16_Mask);\
-	tmp = _mm256_shuffle_epi8(t, tmp);\
-	ret = _mm256_or_si256(ret, tmp); \
-	if (idx + 1 == N) return ret;
+    t = _mm256_loadu_si256(lut + idx);\
+    tmp = _mm256_adds_epu8(s, m256i_u8_all_112);\
+    s = _mm256_sub_epi8(s, m256i_u8_all_16);\
+    tmp = _mm256_shuffle_epi8(t, tmp);\
+    ret = _mm256_or_si256(ret, tmp); \
+    if (idx + 1 == N) return ret;
 
-	LOOKUP(1)
-	LOOKUP(2)
-	LOOKUP(3)
-	LOOKUP(4)
-	LOOKUP(5)
-	LOOKUP(6)
-	LOOKUP(7)
-	LOOKUP(8)
-	LOOKUP(9)
-	LOOKUP(10)
-	LOOKUP(11)
-	LOOKUP(12)
-	LOOKUP(13)
-	LOOKUP(14)
-	LOOKUP(15)
+    LOOKUP(1)
+    LOOKUP(2)
+    LOOKUP(3)
+    LOOKUP(4)
+    LOOKUP(5)
+    LOOKUP(6)
+    LOOKUP(7)
+    LOOKUP(8)
+    LOOKUP(9)
+    LOOKUP(10)
+    LOOKUP(11)
+    LOOKUP(12)
+    LOOKUP(13)
+    LOOKUP(14)
+    LOOKUP(15)
 #undef LOOKUP
 }
 
 template <unsigned N>
 __forceinline
-std::pair<__m256i, __m256i> __vectorcall mm256_u8gather_epu8(
+std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
 //	const __m128i* vlut,
 	const __m256i* vlut,
-	__m256i m256i_u8_16_Mask, __m256i m256i_u8_112_Mask,
+	__m256i m256i_u8_all_16, __m256i m256i_u8_all_112,
 	__m256i vindex0, __m256i vindex1
 	)
 {
 	static_assert(N != 0, "N must not be 0.");
 	static_assert(N <= 16, "N must be less than or equal to 16.");
 
-	__m256i tmp0 = _mm256_adds_epu8(vindex0, m256i_u8_112_Mask);
-	__m256i tmp1 = _mm256_adds_epu8(vindex1, m256i_u8_112_Mask);
+	__m256i tmp0 = _mm256_adds_epu8(vindex0, m256i_u8_all_112);
+	__m256i tmp1 = _mm256_adds_epu8(vindex1, m256i_u8_all_112);
 	//__m256i t = _mm256_broadcastsi128_si256(vlut[0]);
 	__m256i t = _mm256_loadu_si256(vlut + 0);
-	__m256i s0 = _mm256_sub_epi8(vindex0, m256i_u8_16_Mask);
-	__m256i s1 = _mm256_sub_epi8(vindex1, m256i_u8_16_Mask);
+	__m256i s0 = _mm256_sub_epi8(vindex0, m256i_u8_all_16);
+	__m256i s1 = _mm256_sub_epi8(vindex1, m256i_u8_all_16);
 	vindex0 = _mm256_shuffle_epi8(t, tmp0);
 	vindex1 = _mm256_shuffle_epi8(t, tmp1);
 	//t = _mm256_broadcastsi128_si256(vlut[1]);
@@ -142,10 +142,10 @@ std::pair<__m256i, __m256i> __vectorcall mm256_u8gather_epu8(
 	if (N == 1) return std::make_pair(vindex0, vindex1);
 
 #define LOOKUP(idx) \
-	tmp0 = _mm256_adds_epu8(s0, m256i_u8_112_Mask);\
-	tmp1 = _mm256_adds_epu8(s1, m256i_u8_112_Mask);\
-	s0 = _mm256_sub_epi8(s0, m256i_u8_16_Mask);\
-	s1 = _mm256_sub_epi8(s1, m256i_u8_16_Mask);\
+	tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112);\
+	tmp1 = _mm256_adds_epu8(s1, m256i_u8_all_112);\
+	s0 = _mm256_sub_epi8(s0, m256i_u8_all_16);\
+	s1 = _mm256_sub_epi8(s1, m256i_u8_all_16);\
 	tmp0 = _mm256_shuffle_epi8(t, tmp0);\
 	tmp1 = _mm256_shuffle_epi8(t, tmp1);\
 	t = _mm256_loadu_si256(vlut + idx + 1);\
@@ -171,8 +171,8 @@ std::pair<__m256i, __m256i> __vectorcall mm256_u8gather_epu8(
 #undef LOOKUP
 
 	t = vlut[15]; \
-	tmp0 = _mm256_adds_epu8(s0, m256i_u8_112_Mask); \
-	tmp1 = _mm256_adds_epu8(s1, m256i_u8_112_Mask); \
+	tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112); \
+	tmp1 = _mm256_adds_epu8(s1, m256i_u8_all_112); \
 	tmp0 = _mm256_shuffle_epi8(t, tmp0); \
 	tmp1 = _mm256_shuffle_epi8(t, tmp1); \
 	vindex0 = _mm256_or_si256(vindex0, tmp0); \
@@ -204,15 +204,13 @@ void gamma_correction_test(
 
 	//#define USE_GATHER
 
-#ifdef USE_GATHER
-	__m256i andMask = _mm256_set1_epi32(0xFF);
-#else
+#ifndef USE_GATHER
 	__m256i lut0[16];
 	__m256i lut1[16];
 	setLUT(lut0, table0);
 	setLUT(lut1, table1);
-	__m256i m256i_u8_16_Mask = _mm256_set1_epi8(0x10);
-	__m256i m256i_u8_112_Mask = _mm256_set1_epi8(112);
+	__m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
+	__m256i m256i_u8_all_112 = _mm256_set1_epi8(112);
 #endif
 
 	for (int z = 0; z < 10000; ++z) {
@@ -228,18 +226,16 @@ void gamma_correction_test(
 				__m256i s0 = _mm256_loadu_si256(pSrcLine1 + x);
 				__m256i s1 = _mm256_loadu_si256(pSrcLine2 + x);
 #ifdef USE_GATHER
-				s0 = mm256_u8gather_epu8(table0, s0, andMask);
-				s1 = mm256_u8gather_epu8(table0, s1, andMask);
+				s0 = ymm_u8lookup_avx2gather(table0, s0);
+				s1 = ymm_u8lookup_avx2gather(table0, s1);
 #elif 0
-				//s0 = mm256_u8gather_epu8<16>((const __m128i*)table0, s0, m256i_u8_16_Mask, m256i_u8_112_Mask);
-				//s1 = mm256_u8gather_epu8<16>((const __m128i*)table0, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
-				s0 = mm256_u8gather_epu8<16>(lut0, s0, m256i_u8_16_Mask, m256i_u8_112_Mask);
-				s1 = mm256_u8gather_epu8<16>(lut1, s1, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				s0 = ymm_u8lookup_avx2shuffle<16>(lut0, s0, m256i_u8_all_16, m256i_u8_all_112);
+				s1 = ymm_u8lookup_avx2shuffle<16>(lut1, s1, m256i_u8_all_16, m256i_u8_all_112);
 #elif 1
-				auto ret = mm256_u8gather_epu8<16>(
+				auto ret = ymm_u8lookup_avx2shuffle<16>(
 					//(const __m128i*)table0,
 					lut0,
-					m256i_u8_16_Mask, m256i_u8_112_Mask,
+					m256i_u8_all_16, m256i_u8_all_112,
 					s0, s1
 				);
 				s0 = ret.first;
@@ -273,12 +269,11 @@ void gamma_correction_test(
 #endif
 
 #ifdef USE_GATHER
-				sn = mm256_u8gather_epu8(table1, sn, andMask);
+				sn = ymm_u8lookup_avx2gather(table1, sn);
 #elif 1
-				//sn = mm256_u8gather_epu8<16>((const __m128i*)table1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
-				sn = mm256_u8gather_epu8<16>(lut1, sn, m256i_u8_16_Mask, m256i_u8_112_Mask);
+				sn = ymm_u8lookup_avx2shuffle<16>(lut1, sn, m256i_u8_all_16, m256i_u8_all_112);
 #else
-				sn = mm256_u8lookup_naive(table1, sn);
+				sn = ymm_u8lookup_naive(table1, sn);
 #endif
 				_mm_storeu_si128(pDstLine1 + x, _mm256_castsi256_si128(sn));
 			}

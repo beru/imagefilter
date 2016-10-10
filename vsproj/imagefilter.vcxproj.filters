@@ -24,7 +24,7 @@
     <ClCompile Include="..\ReadImage\File.cpp">
       <Filter>ReadImage</Filter>
     </ClCompile>
-    <ClCompile Include="..\gather_test.cpp">
+    <ClCompile Include="..\gamma_correction_test.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
