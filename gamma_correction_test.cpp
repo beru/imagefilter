@@ -12,6 +12,8 @@
 #include "timer.h"
 #include "sym.h"
 
+#include "iacaMarks.h"
+
 namespace {
 
 #define _MM_ALIGN32 __declspec(align(32))
@@ -20,14 +22,6 @@ __forceinline void setTable(T table[256], double gamma) {
 	for (size_t i = 0; i < 256; ++i) {
 		double di = (double)i / 255.0;
 		table[i] = (T)(std::pow(di, gamma) * 255.0 + 0.5);
-	}
-}
-
-__forceinline void setLUT(__m256i lut[16], const uint8_t table[256]) {
-	__m128i val;
-	for (size_t i = 0; i < 16; ++i) {
-		val = _mm_loadu_si128((__m128i*)(table + i * 16));
-		lut[i] = _mm256_broadcastsi128_si256(val);
 	}
 }
 
@@ -70,16 +64,10 @@ __m256i ymm_u8lookup_avx2gather(const uint8_t* lut, __m256i vindex) {
     return ret;
 }
 
-#define USE_BROADCAST
-
 template <unsigned N>
 __forceinline
 __m256i ymm_u8lookup_avx2shuffle(
-#ifdef USE_BROADCAST
     const __m128i* lut,
-#else
-    const __m256i* lut,
-#endif
     __m256i vindex,
     __m256i m256i_u8_all_16,
     __m256i m256i_u8_all_112
@@ -89,17 +77,12 @@ __m256i ymm_u8lookup_avx2shuffle(
 
     // a heck a lot of instructions needed...
     //LOOKUP(0)
-#ifdef USE_BROADCAST
     __m256i t = _mm256_broadcastsi128_si256(lut[0]);
-#else
-    __m256i t = _mm256_loadu_si256(lut + 0);
-#endif
     __m256i tmp = _mm256_adds_epu8(vindex, m256i_u8_all_112);
     __m256i s = _mm256_sub_epi8(vindex, m256i_u8_all_16);
     __m256i ret = _mm256_shuffle_epi8(t, tmp);
     if (N == 1) return ret;
 
-#ifdef USE_BROADCAST
 #define LOOKUP(idx) \
     t = _mm256_broadcastsi128_si256(lut[idx]);\
     tmp = _mm256_adds_epu8(s, m256i_u8_all_112);\
@@ -107,15 +90,6 @@ __m256i ymm_u8lookup_avx2shuffle(
     tmp = _mm256_shuffle_epi8(t, tmp);\
     ret = _mm256_or_si256(ret, tmp); \
     if (idx + 1 == N) return ret;
-#else
-#define LOOKUP(idx) \
-    t = _mm256_loadu_si256(lut + idx);\
-    tmp = _mm256_adds_epu8(s, m256i_u8_all_112);\
-    s = _mm256_sub_epi8(s, m256i_u8_all_16);\
-    tmp = _mm256_shuffle_epi8(t, tmp);\
-    ret = _mm256_or_si256(ret, tmp); \
-    if (idx + 1 == N) return ret;
-#endif
 
     LOOKUP(1)
     LOOKUP(2)
@@ -138,11 +112,7 @@ __m256i ymm_u8lookup_avx2shuffle(
 template <unsigned N>
 __forceinline
 std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
-#ifdef USE_BROADCAST
 	const __m128i* vlut,
-#else
-	const __m256i* vlut,
-#endif
 	__m256i m256i_u8_all_16, __m256i m256i_u8_all_112,
 	__m256i vindex0, __m256i vindex1
 	)
@@ -152,23 +122,14 @@ std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
 
 	__m256i tmp0 = _mm256_adds_epu8(vindex0, m256i_u8_all_112);
 	__m256i tmp1 = _mm256_adds_epu8(vindex1, m256i_u8_all_112);
-#ifdef USE_BROADCAST
 	__m256i t = _mm256_broadcastsi128_si256(vlut[0]);
-#else
-	__m256i t = _mm256_loadu_si256(vlut + 0);
-#endif
 	__m256i s0 = _mm256_sub_epi8(vindex0, m256i_u8_all_16);
 	__m256i s1 = _mm256_sub_epi8(vindex1, m256i_u8_all_16);
 	vindex0 = _mm256_shuffle_epi8(t, tmp0);
 	vindex1 = _mm256_shuffle_epi8(t, tmp1);
-#ifdef USE_BROADCAST
     t = _mm256_broadcastsi128_si256(vlut[1]);
-#else
-	t = _mm256_loadu_si256(vlut + 1);
-#endif
 	if (N == 1) return std::make_pair(vindex0, vindex1);
 
-#ifdef USE_BROADCAST
 #define LOOKUP(idx) \
     tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112); \
     tmp1 = _mm256_adds_epu8(s1, m256i_u8_all_112); \
@@ -180,19 +141,6 @@ std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
     vindex0 = _mm256_or_si256(vindex0, tmp0); \
     vindex1 = _mm256_or_si256(vindex1, tmp1); \
     if (idx + 1 == N) return std::make_pair(vindex0, vindex1);
-#else
-#define LOOKUP(idx) \
-	tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112);\
-	tmp1 = _mm256_adds_epu8(s1, m256i_u8_all_112);\
-	s0 = _mm256_sub_epi8(s0, m256i_u8_all_16);\
-	s1 = _mm256_sub_epi8(s1, m256i_u8_all_16);\
-	tmp0 = _mm256_shuffle_epi8(t, tmp0);\
-	tmp1 = _mm256_shuffle_epi8(t, tmp1);\
-	t = _mm256_loadu_si256(vlut + idx + 1);\
-	vindex0 = _mm256_or_si256(vindex0, tmp0); \
-	vindex1 = _mm256_or_si256(vindex1, tmp1); \
-	if (idx + 1 == N) return std::make_pair(vindex0, vindex1);
-#endif
 
 	LOOKUP(1)
 	LOOKUP(2)
@@ -238,24 +186,18 @@ void gamma_correction_test(
 	//#define USE_GATHER
 
 #if !defined(USE_GATHER)
-#if !defined(USE_BROADCAST)
-	__m256i lut0[16];
-	__m256i lut1[16];
-	setLUT(lut0, table0);
-	setLUT(lut1, table1);
-#endif
 	__m256i m256i_u8_all_16 = _mm256_set1_epi8(0x10);
 	__m256i m256i_u8_all_112 = _mm256_set1_epi8(112);
 #endif
 
 	for (int z = 0; z < 10000; ++z) {
 #if 1
-		const uint8_t* __restrict pSrcLine = pSrc;
-		uint8_t* __restrict pDstLine = pDest;
 		const size_t xCnt = (width + 31) / 32;
+        ptrdiff_t srcDisp = 0;
+        ptrdiff_t dstDisp = 0;
 		for (size_t y = 0; y < height / 2; ++y) {
-			const __m256i* __restrict pSrcLine1 = (const __m256i*) pSrcLine;
-			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrcLine + lineSize);
+			const __m256i* __restrict pSrcLine1 = (const __m256i*) (pSrc + srcDisp);
+			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrc + srcDisp + lineSize);
 			for (size_t x = 0; x < xCnt; ++x) {
 				__m256i s0 = _mm256_loadu_si256(pSrcLine1 + x);
 				__m256i s1 = _mm256_loadu_si256(pSrcLine2 + x);
@@ -264,9 +206,6 @@ void gamma_correction_test(
 				s1 = ymm_u8lookup_avx2gather(table0, s1);
 #elif 1
                 
-#ifdef USE_BROADCAST
-
-#if 1
                 auto ret = ymm_u8lookup_avx2shuffle<16>(
                     (const __m128i*)table0,
                     m256i_u8_all_16, m256i_u8_all_112,
@@ -274,28 +213,6 @@ void gamma_correction_test(
                     );
                 s0 = ret.first;
                 s1 = ret.second;
-#else
-                s0 = ymm_u8lookup_avx2shuffle<16>((const __m128i*)table0, s0, m256i_u8_all_16, m256i_u8_all_112);
-                s1 = ymm_u8lookup_avx2shuffle<16>((const __m128i*)table0, s1, m256i_u8_all_16, m256i_u8_all_112);
-#endif
-
-#else
-
-#if 1
-                auto ret = ymm_u8lookup_avx2shuffle<16>(
-                    lut0,
-                    m256i_u8_all_16, m256i_u8_all_112,
-                    s0, s1
-                    );
-                s0 = ret.first;
-                s1 = ret.second;
-#else
-				s0 = ymm_u8lookup_avx2shuffle<16>(lut0, s0, m256i_u8_all_16, m256i_u8_all_112);
-				s1 = ymm_u8lookup_avx2shuffle<16>(lut0, s1, m256i_u8_all_16, m256i_u8_all_112);
-#endif
-
-#endif
-
 #else
 				s0 = mm256_u8lookup_naive(table0, s0);
 				s1 = mm256_u8lookup_naive(table0, s1);
@@ -327,21 +244,15 @@ void gamma_correction_test(
 #ifdef USE_GATHER
 				sn = ymm_u8lookup_avx2gather(table1, sn);
 #elif 1
-                
-#ifdef USE_BROADCAST
                 sn = ymm_u8lookup_avx2shuffle<16>((const __m128i*)table1, sn, m256i_u8_all_16, m256i_u8_all_112);
-#else
-				sn = ymm_u8lookup_avx2shuffle<16>(lut1, sn, m256i_u8_all_16, m256i_u8_all_112);
-#endif
-
 #else
 				sn = ymm_u8lookup_naive(table1, sn);
 #endif
-				_mm_storeu_si128((__m128i* __restrict) (pDstLine + y*lineSize) + x, _mm256_castsi256_si128(sn));
+				_mm_storeu_si128((__m128i* __restrict) (pDest + dstDisp) + x, _mm256_castsi256_si128(sn));
 			}
-			pSrcLine += lineSize * 2;
+            srcDisp += lineSize * 2;
+            dstDisp += lineSize;
 		}
-//        pDstLine += lineSize;
 #else
 		const uint8_t* pSrcLine = pSrc;
 		uint8_t* pDstLine = pDest;
