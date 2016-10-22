@@ -12,6 +12,8 @@
 #include "timer.h"
 #include "sym.h"
 
+#include "iacaMarks.h"
+
 namespace {
 
 #define _MM_ALIGN32 __declspec(align(32))
@@ -202,6 +204,7 @@ void gamma_correction_test(
 		uint8_t* __restrict pDstLine = pDest;
 		const size_t xCnt = (width + 31) / 32;
 		for (size_t y = 0; y < height / 2; ++y) {
+            IACA_VC64_START
 			const __m256i* __restrict pSrcLine1 = (const __m256i*) pSrcLine;
 			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrcLine + lineSize);
 			for (size_t x = 0; x < xCnt; ++x) {
@@ -258,6 +261,7 @@ void gamma_correction_test(
 			}
 			pSrcLine += lineSize * 2;
 		}
+        IACA_VC64_END
 //        pDstLine += lineSize;
 #else
 		const uint8_t* pSrcLine = pSrc;
