@@ -12,8 +12,6 @@
 #include "timer.h"
 #include "sym.h"
 
-#include "iacaMarks.h"
-
 namespace {
 
 #define _MM_ALIGN32 __declspec(align(32))
@@ -22,6 +20,14 @@ __forceinline void setTable(T table[256], double gamma) {
 	for (size_t i = 0; i < 256; ++i) {
 		double di = (double)i / 255.0;
 		table[i] = (T)(std::pow(di, gamma) * 255.0 + 0.5);
+	}
+}
+
+__forceinline void setLUT(__m256i lut[16], const uint8_t table[256]) {
+	__m128i val;
+	for (size_t i = 0; i < 16; ++i) {
+		val = _mm_loadu_si128((__m128i*)(table + i * 16));
+		lut[i] = _mm256_broadcastsi128_si256(val);
 	}
 }
 
@@ -192,12 +198,12 @@ void gamma_correction_test(
 
 	for (int z = 0; z < 10000; ++z) {
 #if 1
+		const uint8_t* __restrict pSrcLine = pSrc;
+		uint8_t* __restrict pDstLine = pDest;
 		const size_t xCnt = (width + 31) / 32;
-        ptrdiff_t srcDisp = 0;
-        ptrdiff_t dstDisp = 0;
 		for (size_t y = 0; y < height / 2; ++y) {
-			const __m256i* __restrict pSrcLine1 = (const __m256i*) (pSrc + srcDisp);
-			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrc + srcDisp + lineSize);
+			const __m256i* __restrict pSrcLine1 = (const __m256i*) pSrcLine;
+			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrcLine + lineSize);
 			for (size_t x = 0; x < xCnt; ++x) {
 				__m256i s0 = _mm256_loadu_si256(pSrcLine1 + x);
 				__m256i s1 = _mm256_loadu_si256(pSrcLine2 + x);
@@ -205,7 +211,6 @@ void gamma_correction_test(
 				s0 = ymm_u8lookup_avx2gather(table0, s0);
 				s1 = ymm_u8lookup_avx2gather(table0, s1);
 #elif 1
-                
                 auto ret = ymm_u8lookup_avx2shuffle<16>(
                     (const __m128i*)table0,
                     m256i_u8_all_16, m256i_u8_all_112,
@@ -245,14 +250,15 @@ void gamma_correction_test(
 				sn = ymm_u8lookup_avx2gather(table1, sn);
 #elif 1
                 sn = ymm_u8lookup_avx2shuffle<16>((const __m128i*)table1, sn, m256i_u8_all_16, m256i_u8_all_112);
+
 #else
 				sn = ymm_u8lookup_naive(table1, sn);
 #endif
-				_mm_storeu_si128((__m128i* __restrict) (pDest + dstDisp) + x, _mm256_castsi256_si128(sn));
+				_mm_storeu_si128((__m128i* __restrict) (pDstLine + y*lineSize) + x, _mm256_castsi256_si128(sn));
 			}
-            srcDisp += lineSize * 2;
-            dstDisp += lineSize;
+			pSrcLine += lineSize * 2;
 		}
+//        pDstLine += lineSize;
 #else
 		const uint8_t* pSrcLine = pSrc;
 		uint8_t* pDstLine = pDest;
