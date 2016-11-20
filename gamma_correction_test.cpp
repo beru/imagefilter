@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "sym.h"
 
+#define IACA_MARKS_OFF
 #include "iacaMarks.h"
 
 namespace {
@@ -202,39 +203,60 @@ void gamma_correction_test(
 #if 1
 		const uint8_t* __restrict pSrcLine = pSrc;
 		uint8_t* __restrict pDstLine = pDest;
-		const size_t xCnt = (width + 31) / 32;
+		const size_t xCnt = (width + 63) / 64;
 		for (size_t y = 0; y < height / 2; ++y) {
             IACA_VC64_START
 			const __m256i* __restrict pSrcLine1 = (const __m256i*) pSrcLine;
 			const __m256i* __restrict pSrcLine2 = (const __m256i*) (pSrcLine + lineSize);
 			for (size_t x = 0; x < xCnt; ++x) {
-				__m256i s0 = _mm256_loadu_si256(pSrcLine1 + x);
-				__m256i s1 = _mm256_loadu_si256(pSrcLine2 + x);
+				__m256i s00 = _mm256_loadu_si256(pSrcLine1 + x*2 + 0);
+				__m256i s01 = _mm256_loadu_si256(pSrcLine1 + x*2 + 1);
+				__m256i s10 = _mm256_loadu_si256(pSrcLine2 + x*2 + 0);
+				__m256i s11 = _mm256_loadu_si256(pSrcLine2 + x*2 + 1);
 #ifdef USE_GATHER
-				s0 = ymm_u8lookup_avx2gather(table0, s0);
-				s1 = ymm_u8lookup_avx2gather(table0, s1);
+				s00 = ymm_u8lookup_avx2gather(table0, s00);
+				s10 = ymm_u8lookup_avx2gather(table0, s10);
+				s01 = ymm_u8lookup_avx2gather(table0, s01);
+				s11 = ymm_u8lookup_avx2gather(table0, s11);
 #elif 1
                 auto ret = ymm_u8lookup_avx2shuffle<16>(
                     (const __m128i*)table0,
                     m256i_u8_all_16, m256i_u8_all_112,
-                    s0, s1
+                    s00, s10
                     );
-                s0 = ret.first;
-                s1 = ret.second;
+                s00 = ret.first;
+                s10 = ret.second;
+                ret = ymm_u8lookup_avx2shuffle<16>(
+                    (const __m128i*)table0,
+                    m256i_u8_all_16, m256i_u8_all_112,
+                    s01, s11
+                    );
+                s01 = ret.first;
+                s11 = ret.second;
 #else
-				s0 = mm256_u8lookup_naive(table0, s0);
-				s1 = mm256_u8lookup_naive(table0, s1);
+				s00 = mm256_u8lookup_naive(table0, s00);
+				s10 = mm256_u8lookup_naive(table0, s10);
+				s01 = mm256_u8lookup_naive(table0, s01);
+				s11 = mm256_u8lookup_naive(table0, s11);
 #endif
 				
 #if 1
-				__m256i sn = _mm256_avg_epu8(s0, s1);
-				__m256i sn2 = _mm256_srli_si256(sn, 1);
-				sn = _mm256_and_si256(sn, byteMask);
-				sn2 = _mm256_and_si256(sn2, byteMask);
-				sn = _mm256_add_epi16(sn, sn2);
-				sn = _mm256_srli_epi16(sn, 1);
-				sn = _mm256_packus_epi16(sn, _mm256_setzero_si256());
-				sn = _mm256_permute4x64_epi64(sn, _MM_SHUFFLE(0, 0, 2, 0));
+				__m256i sn0 = _mm256_avg_epu8(s00, s10);
+				__m256i sn0a = _mm256_srli_si256(sn0, 1);
+				__m256i sn1 = _mm256_avg_epu8(s01, s11);
+				__m256i sn1a = _mm256_srli_si256(sn1, 1);
+				sn0 = _mm256_and_si256(sn0, byteMask);
+				sn0a = _mm256_and_si256(sn0a, byteMask);
+				sn1 = _mm256_and_si256(sn1, byteMask);
+				sn1a = _mm256_and_si256(sn1a, byteMask);
+				sn0 = _mm256_add_epi16(sn0, sn0a);
+				sn1 = _mm256_add_epi16(sn1, sn1a);
+				sn0 = _mm256_srli_epi16(sn0, 1);
+				sn1 = _mm256_srli_epi16(sn1, 1);
+				sn0 = _mm256_packus_epi16(sn0, _mm256_setzero_si256());
+				sn1 = _mm256_packus_epi16(sn1, _mm256_setzero_si256());
+				sn0 = _mm256_permute4x64_epi64(sn0, _MM_SHUFFLE(0, 0, 2, 0));
+				sn1 = _mm256_permute4x64_epi64(sn1, _MM_SHUFFLE(0, 0, 2, 0));
 #else
 				__m256i s0_0 = _mm256_and_si256(s0, byteMask);
 				__m256i s0_1 = _mm256_and_si256(_mm256_srli_si256(s0, 1), byteMask);
@@ -250,14 +272,24 @@ void gamma_correction_test(
 #endif
 
 #ifdef USE_GATHER
-				sn = ymm_u8lookup_avx2gather(table1, sn);
+				sn0 = ymm_u8lookup_avx2gather(table1, sn0);
+				sn1 = ymm_u8lookup_avx2gather(table1, sn1);
 #elif 1
-                sn = ymm_u8lookup_avx2shuffle<16>((const __m128i*)table1, sn, m256i_u8_all_16, m256i_u8_all_112);
-
+                ret = ymm_u8lookup_avx2shuffle<16>(
+                    (const __m128i*)table1,
+                    m256i_u8_all_16, m256i_u8_all_112,
+                    sn0, sn1
+                    );
+                sn0 = ret.first;
+                sn1 = ret.second;
 #else
-				sn = ymm_u8lookup_naive(table1, sn);
+				sn0 = ymm_u8lookup_naive(table1, sn0);
+				sn1 = ymm_u8lookup_naive(table1, sn1);
 #endif
-				_mm_storeu_si128((__m128i* __restrict) (pDstLine + y*lineSize) + x, _mm256_castsi256_si128(sn));
+				_mm256_storeu_si256(
+                    (__m256i* __restrict) (pDstLine + y*lineSize) + x,
+                    _mm256_permute2x128_si256(sn0, sn1, 0x20)
+                );
 			}
 			pSrcLine += lineSize * 2;
 		}
