@@ -77,9 +77,9 @@ template <unsigned N>
 __forceinline
 __m256i ymm_u8lookup_avx2shuffle(
     const __m128i* lut,
-    __m256i vindex,
     __m256i m256i_u8_all_16,
-    __m256i m256i_u8_all_112
+    __m256i m256i_u8_all_112,
+    __m256i vindex
 ) {
     static_assert(N != 0, "N must not be 0.");
     static_assert(N <= 16, "N must be less than or equal to 16.");
@@ -120,10 +120,10 @@ __m256i ymm_u8lookup_avx2shuffle(
 
 template <unsigned N>
 __forceinline
-std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
+void __vectorcall ymm_u8lookup_avx2shuffle(
 	const __m128i* vlut,
 	__m256i m256i_u8_all_16, __m256i m256i_u8_all_112,
-	__m256i vindex0, __m256i vindex1
+	__m256i& vindex0, __m256i& vindex1
 	)
 {
 	static_assert(N != 0, "N must not be 0.");
@@ -137,7 +137,7 @@ std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
 	vindex0 = _mm256_shuffle_epi8(t, tmp0);
 	vindex1 = _mm256_shuffle_epi8(t, tmp1);
     t = _mm256_broadcastsi128_si256(vlut[1]);
-	if (N == 1) return std::make_pair(vindex0, vindex1);
+	if (N == 1) return;
 
 #define LOOKUP(idx) \
     tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112); \
@@ -149,7 +149,73 @@ std::pair<__m256i, __m256i> __vectorcall ymm_u8lookup_avx2shuffle(
     t = _mm256_broadcastsi128_si256(vlut[idx + 1]); \
     vindex0 = _mm256_or_si256(vindex0, tmp0); \
     vindex1 = _mm256_or_si256(vindex1, tmp1); \
-    if (idx + 1 == N) return std::make_pair(vindex0, vindex1);
+    if (idx + 1 == N) return;
+
+	LOOKUP(1)
+	LOOKUP(2)
+	LOOKUP(3)
+	LOOKUP(4)
+	LOOKUP(5)
+	LOOKUP(6)
+	LOOKUP(7)
+	LOOKUP(8)
+	LOOKUP(9)
+	LOOKUP(10)
+	LOOKUP(11)
+	LOOKUP(12)
+	LOOKUP(13)
+	LOOKUP(14)
+	LOOKUP(15)
+#undef LOOKUP
+
+}
+
+template <unsigned N>
+__forceinline
+void __vectorcall ymm_u8lookup_avx2shuffle(
+	const __m128i* vlut,
+	__m256i m256i_u8_all_16, __m256i m256i_u8_all_112,
+	__m256i& vindex0, __m256i& vindex1, __m256i& vindex2, __m256i& vindex3
+	)
+{
+	static_assert(N != 0, "N must not be 0.");
+	static_assert(N <= 16, "N must be less than or equal to 16.");
+
+	__m256i tmp0 = _mm256_adds_epu8(vindex0, m256i_u8_all_112);
+	__m256i tmp1 = _mm256_adds_epu8(vindex1, m256i_u8_all_112);
+	__m256i tmp2 = _mm256_adds_epu8(vindex2, m256i_u8_all_112);
+	__m256i tmp3 = _mm256_adds_epu8(vindex3, m256i_u8_all_112);
+	__m256i t = _mm256_broadcastsi128_si256(vlut[0]);
+	__m256i s0 = _mm256_sub_epi8(vindex0, m256i_u8_all_16);
+	__m256i s1 = _mm256_sub_epi8(vindex1, m256i_u8_all_16);
+	__m256i s2 = _mm256_sub_epi8(vindex2, m256i_u8_all_16);
+	__m256i s3 = _mm256_sub_epi8(vindex3, m256i_u8_all_16);
+	vindex0 = _mm256_shuffle_epi8(t, tmp0);
+	vindex1 = _mm256_shuffle_epi8(t, tmp1);
+	vindex2 = _mm256_shuffle_epi8(t, tmp2);
+	vindex3 = _mm256_shuffle_epi8(t, tmp3);
+    t = _mm256_broadcastsi128_si256(vlut[1]);
+	if (N == 1) return;
+
+#define LOOKUP(idx) \
+    tmp0 = _mm256_adds_epu8(s0, m256i_u8_all_112); \
+    tmp1 = _mm256_adds_epu8(s1, m256i_u8_all_112); \
+    tmp2 = _mm256_adds_epu8(s2, m256i_u8_all_112); \
+    tmp3 = _mm256_adds_epu8(s3, m256i_u8_all_112); \
+    s0 = _mm256_sub_epi8(s0, m256i_u8_all_16); \
+    s1 = _mm256_sub_epi8(s1, m256i_u8_all_16); \
+    s2 = _mm256_sub_epi8(s2, m256i_u8_all_16); \
+    s3 = _mm256_sub_epi8(s3, m256i_u8_all_16); \
+    tmp0 = _mm256_shuffle_epi8(t, tmp0); \
+    tmp1 = _mm256_shuffle_epi8(t, tmp1); \
+    tmp2 = _mm256_shuffle_epi8(t, tmp2); \
+    tmp3 = _mm256_shuffle_epi8(t, tmp3); \
+    t = _mm256_broadcastsi128_si256(vlut[idx + 1]); \
+    vindex0 = _mm256_or_si256(vindex0, tmp0); \
+    vindex1 = _mm256_or_si256(vindex1, tmp1); \
+    vindex2 = _mm256_or_si256(vindex2, tmp2); \
+    vindex3 = _mm256_or_si256(vindex3, tmp3); \
+    if (idx + 1 == N) return;
 
 	LOOKUP(1)
 	LOOKUP(2)
@@ -199,7 +265,7 @@ void gamma_correction_test(
 	__m256i m256i_u8_all_112 = _mm256_set1_epi8(112);
 #endif
 
-	for (int z = 0; z < 10000; ++z) {
+	for (int z = 0; z < 1000; ++z) {
 #if 1
 		const uint8_t* __restrict pSrcLine = pSrc;
 		uint8_t* __restrict pDstLine = pDest;
@@ -219,25 +285,16 @@ void gamma_correction_test(
 				s01 = ymm_u8lookup_avx2gather(table0, s01);
 				s11 = ymm_u8lookup_avx2gather(table0, s11);
 #elif 1
-                auto ret = ymm_u8lookup_avx2shuffle<16>(
+                ymm_u8lookup_avx2shuffle<16>(
                     (const __m128i*)table0,
                     m256i_u8_all_16, m256i_u8_all_112,
-                    s00, s10
+                    s00, s01, s10, s11
                     );
-                s00 = ret.first;
-                s10 = ret.second;
-                ret = ymm_u8lookup_avx2shuffle<16>(
-                    (const __m128i*)table0,
-                    m256i_u8_all_16, m256i_u8_all_112,
-                    s01, s11
-                    );
-                s01 = ret.first;
-                s11 = ret.second;
 #else
-				s00 = mm256_u8lookup_naive(table0, s00);
-				s10 = mm256_u8lookup_naive(table0, s10);
-				s01 = mm256_u8lookup_naive(table0, s01);
-				s11 = mm256_u8lookup_naive(table0, s11);
+				s00 = ymm_u8lookup_naive(table0, s00);
+				s10 = ymm_u8lookup_naive(table0, s10);
+				s01 = ymm_u8lookup_naive(table0, s01);
+				s11 = ymm_u8lookup_naive(table0, s11);
 #endif
 				
 #if 1
@@ -257,6 +314,7 @@ void gamma_correction_test(
 				sn1 = _mm256_packus_epi16(sn1, _mm256_setzero_si256());
 				sn0 = _mm256_permute4x64_epi64(sn0, _MM_SHUFFLE(0, 0, 2, 0));
 				sn1 = _mm256_permute4x64_epi64(sn1, _MM_SHUFFLE(0, 0, 2, 0));
+                sn0 = _mm256_permute2x128_si256(sn0, sn1, 0x20);
 #else
 				__m256i s0_0 = _mm256_and_si256(s0, byteMask);
 				__m256i s0_1 = _mm256_and_si256(_mm256_srli_si256(s0, 1), byteMask);
@@ -273,22 +331,18 @@ void gamma_correction_test(
 
 #ifdef USE_GATHER
 				sn0 = ymm_u8lookup_avx2gather(table1, sn0);
-				sn1 = ymm_u8lookup_avx2gather(table1, sn1);
 #elif 1
-                ret = ymm_u8lookup_avx2shuffle<16>(
+                sn0 = ymm_u8lookup_avx2shuffle<16>(
                     (const __m128i*)table1,
                     m256i_u8_all_16, m256i_u8_all_112,
-                    sn0, sn1
+                    sn0
                     );
-                sn0 = ret.first;
-                sn1 = ret.second;
 #else
 				sn0 = ymm_u8lookup_naive(table1, sn0);
-				sn1 = ymm_u8lookup_naive(table1, sn1);
 #endif
 				_mm256_storeu_si256(
                     (__m256i* __restrict) (pDstLine + y*lineSize) + x,
-                    _mm256_permute2x128_si256(sn0, sn1, 0x20)
+                    sn0
                 );
 			}
 			pSrcLine += lineSize * 2;
@@ -306,8 +360,8 @@ void gamma_correction_test(
 				uint8_t s2 = pSrcLine2[x * 2];
 				uint8_t s3 = pSrcLine2[x * 2 + 1];
 #if 1
-				int sum = table1[s0] + table1[s1] + table1[s2] + table1[s3];
-				pDstLine[x] = table0[sum >> 2];
+				int sum = (int)table0[s0] + table0[s1] + table0[s2] + table0[s3];
+				pDstLine[x] = table1[sum >> 2];
 #else
 				int sum = s0 + s1 + s2 + s3;
 				pDstLine[x] = sum >> 2;
